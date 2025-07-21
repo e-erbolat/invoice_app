@@ -4,6 +4,7 @@ class InvoiceItem {
   final int quantity;
   final double price;
   final double totalPrice;
+  final bool isBonus;
 
   InvoiceItem({
     required this.productId,
@@ -11,6 +12,7 @@ class InvoiceItem {
     required this.quantity,
     required this.price,
     required this.totalPrice,
+    this.isBonus = false,
   });
 
   Map<String, dynamic> toMap() {
@@ -20,6 +22,7 @@ class InvoiceItem {
       'quantity': quantity,
       'price': price,
       'totalPrice': totalPrice,
+      'isBonus': isBonus,
     };
   }
 
@@ -30,6 +33,7 @@ class InvoiceItem {
       quantity: map['quantity'] ?? 0,
       price: (map['price'] as num).toDouble(),
       totalPrice: (map['totalPrice'] as num).toDouble(),
+      isBonus: map['isBonus'] ?? false,
     );
   }
 } 

@@ -10,9 +10,12 @@ import '../services/firebase_service.dart';
 import '../services/auth_service.dart';
 import '../models/app_user.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
 class InvoiceCreateScreen extends StatefulWidget {
-  const InvoiceCreateScreen({super.key});
+  final Invoice? invoiceToEdit;
+  const InvoiceCreateScreen({super.key, this.invoiceToEdit});
 
   @override
   _InvoiceCreateScreenState createState() => _InvoiceCreateScreenState();
@@ -34,6 +37,7 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
   DateTime _selectedDate = DateTime.now();
   int _quantity = 1;
   double _price = 0.0;
+  bool _isBonus = false;
   final TextEditingController _quantityController = TextEditingController(text: '1');
   final TextEditingController _priceController = TextEditingController(text: '0.0');
   // Добавляю контроллер для Autocomplete
@@ -41,7 +45,10 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
   FocusNode? _autocompleteProductFocusNode;
   bool _isLoading = true;
   bool _isSubmitting = false;
-  String? _selectedStatus = 'на сборке'; // Теперь по умолчанию 'на сборке'
+  int? _selectedStatusCode;
+  static const String _draftKey = 'invoice_draft';
+  bool _restoredFromDraft = false;
+  bool get isEditMode => widget.invoiceToEdit != null;
 
   @override
   void initState() {
@@ -49,6 +56,24 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
     _autocompleteProductController = TextEditingController();
     _autocompleteProductFocusNode = FocusNode();
     _loadData();
+    if (!isEditMode) _loadDraftIfExists();
+  }
+
+  void _preFillFromInvoice(Invoice invoice) {
+    if (_outlets.isNotEmpty) {
+      _selectedOutlet = _outlets.firstWhere(
+        (o) => o.id == invoice.outletId,
+        orElse: () => _outlets.first,
+      );
+    }
+    if (_salesReps.isNotEmpty) {
+      _selectedSalesRep = _salesReps.firstWhere(
+        (r) => r.id == invoice.salesRepId,
+        orElse: () => _salesReps.first,
+      );
+    }
+    _selectedDate = invoice.date.toDate();
+    _invoiceItems = List<InvoiceItem>.from(invoice.items);
   }
 
   @override
@@ -98,6 +123,10 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
           _selectedSalesRep = selectedRep;
           _isLoading = false;
         });
+        if (isEditMode) {
+          _preFillFromInvoice(widget.invoiceToEdit!);
+          _selectedStatusCode = widget.invoiceToEdit!.status;
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -111,8 +140,59 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
     }
   }
 
+  Future<void> _loadDraftIfExists() async {
+    final prefs = await SharedPreferences.getInstance();
+    final draft = prefs.getString(_draftKey);
+    if (draft != null && !_restoredFromDraft) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        final restore = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Восстановить черновик?'),
+            content: const Text('У вас есть несохранённый черновик накладной. Хотите продолжить заполнение?'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Нет, начать заново')),
+              ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Восстановить')),
+            ],
+          ),
+        );
+        if (restore == true) {
+          _restoreDraft(jsonDecode(draft));
+          setState(() { _restoredFromDraft = true; });
+        } else {
+          await prefs.remove(_draftKey);
+        }
+      });
+    }
+  }
+
+  void _restoreDraft(Map<String, dynamic> data) {
+    setState(() {
+      _selectedOutlet = data['outletId'] != null ? _outlets.firstWhere((o) => o.id == data['outletId'], orElse: () => _selectedOutlet ?? _outlets.first) : null;
+      _selectedSalesRep = data['salesRepId'] != null ? _salesReps.firstWhere((r) => r.id == data['salesRepId'], orElse: () => _selectedSalesRep ?? _salesReps.first) : null;
+      _selectedDate = data['date'] != null ? DateTime.tryParse(data['date']) ?? _selectedDate : _selectedDate;
+      _invoiceItems = (data['items'] as List?)?.map((e) => InvoiceItem.fromMap(e)).toList() ?? [];
+    });
+  }
+
+  Future<void> _saveDraft() async {
+    final prefs = await SharedPreferences.getInstance();
+    final draft = {
+      'outletId': _selectedOutlet?.id,
+      'salesRepId': _selectedSalesRep?.id,
+      'date': _selectedDate.toIso8601String(),
+      'items': _invoiceItems.map((e) => e.toMap()).toList(),
+    };
+    await prefs.setString(_draftKey, jsonEncode(draft));
+  }
+
+  Future<void> _clearDraft() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_draftKey);
+  }
+
   void _addProductItem() {
-    if (_selectedProduct == null || _quantity <= 0 || _price <= 0) {
+    if (_selectedProduct == null || _quantity <= 0 || (!_isBonus && _price <= 0)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Заполните все поля товара')),
       );
@@ -124,7 +204,8 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
       productName: _selectedProduct!.name,
       quantity: _quantity,
       price: _price,
-      totalPrice: _quantity * _price,
+      totalPrice: _isBonus ? 0.0 : _quantity * _price,
+      isBonus: _isBonus,
     );
 
     setState(() {
@@ -132,15 +213,22 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
       _selectedProduct = null;
       _quantity = 1;
       _price = 0.0;
+      _isBonus = false;
       _quantityController.text = '1';
       _priceController.text = '0.0';
+      // Очищаем поле поиска товара через контроллер Autocomplete
+      if (_autocompleteProductController != null) {
+        _autocompleteProductController!.clear();
+      }
     });
+    _saveDraft();
   }
 
   void _removeProductItem(int index) {
     setState(() {
       _invoiceItems.removeAt(index);
     });
+    _saveDraft();
   }
 
   void _selectDate() async {
@@ -154,11 +242,12 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
       setState(() {
         _selectedDate = picked;
       });
+      _saveDraft();
     }
   }
 
   double get _totalAmount {
-    return _invoiceItems.fold(0.0, (total, item) => total + item.totalPrice);
+    return _invoiceItems.fold(0.0, (total, item) => total + (item.isBonus ? 0.0 : item.totalPrice));
   }
 
   Future<void> _saveInvoice() async {
@@ -168,54 +257,50 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
       );
       return;
     }
-
-    setState(() {
-      _isSubmitting = true;
-    });
-
+    setState(() { _isSubmitting = true; });
     try {
-      String status = 'на рассмотрении'; // По умолчанию "на рассмотрении"
+      int status = InvoiceStatus.review;
       if (_currentUser != null && _currentUser!.role == 'admin') {
-        status = _selectedStatus ?? 'на сборке'; // Для admin можно выбрать статус
+        status = _selectedStatusCode ?? InvoiceStatus.review;
       }
-      
       final invoice = Invoice(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        id: isEditMode ? widget.invoiceToEdit!.id : DateTime.now().millisecondsSinceEpoch.toString(),
         outletId: _selectedOutlet!.id,
         outletName: _selectedOutlet!.name,
         outletAddress: _selectedOutlet!.address,
         salesRepId: _selectedSalesRep!.id,
         salesRepName: _selectedSalesRep!.name,
         date: Timestamp.fromDate(_selectedDate),
-        status: status, // Новый статус
-        isPaid: false, // Не оплачено по умолчанию
-        paymentType: 'наличка', // Тип оплаты по умолчанию
-        isDebt: false, // Не долг по умолчанию
-        acceptedByAdmin: false, // Не принято админом по умолчанию
-        acceptedBySuperAdmin: false, // Не принято суперадмином по умолчанию
+        status: status,
+        isPaid: false,
+        paymentType: 'наличка',
+        isDebt: false,
+        acceptedByAdmin: false,
+        acceptedBySuperAdmin: false,
         items: _invoiceItems,
         totalAmount: _totalAmount,
       );
-
-      await _invoiceService.createInvoice(invoice);
-
+      if (isEditMode) {
+        await _invoiceService.updateInvoice(invoice);
+      } else {
+        await _invoiceService.createInvoice(invoice);
+        await _clearDraft();
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Накладная создана успешно!')),
+          SnackBar(content: Text(isEditMode ? 'Изменения сохранены!' : 'Накладная создана успешно!')),
         );
         Navigator.pop(context);
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка создания накладной: $e')),
+          SnackBar(content: Text('Ошибка: $e')),
         );
       }
     } finally {
       if (mounted) {
-        setState(() {
-          _isSubmitting = false;
-        });
+        setState(() { _isSubmitting = false; });
       }
     }
   }
@@ -224,7 +309,7 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Создать накладную'),
+        title: Text(isEditMode ? 'Редактировать накладную' : 'Создать накладную'),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
       ),
@@ -264,6 +349,7 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
                   setState(() {
                     _selectedSalesRep = rep;
                   });
+                  _saveDraft();
                 },
               ),
             
@@ -298,6 +384,7 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
                 setState(() {
                   _selectedOutlet = outlet;
                 });
+                _saveDraft();
               },
             ),
             
@@ -412,9 +499,27 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
                                 _price = double.tryParse(value) ?? 0.0;
                               });
                             },
+                            enabled: !_isBonus,
                           ),
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 8),
+                    CheckboxListTile(
+                      value: _isBonus,
+                      onChanged: (v) {
+                        setState(() {
+                          _isBonus = v ?? false;
+                          if (_isBonus) {
+                            _priceController.text = '0.0';
+                            _price = 0.0;
+                          } else if (_selectedProduct != null) {
+                            _priceController.text = _selectedProduct!.price.toStringAsFixed(2);
+                            _price = _selectedProduct!.price;
+                          }
+                        });
+                      },
+                      title: const Text('Бонус (выдать бесплатно)'),
                     ),
                     
                     const SizedBox(height: 16),
@@ -489,6 +594,14 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
                                           controller: priceController,
                                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                           decoration: const InputDecoration(labelText: 'Цена (₸)'),
+                                          enabled: !item.isBonus,
+                                        ),
+                                        CheckboxListTile(
+                                          value: item.isBonus,
+                                          onChanged: (v) {
+                                            // Не реализовано редактирование бонуса в диалоге (можно добавить при необходимости)
+                                          },
+                                          title: const Text('Бонус (выдать бесплатно)'),
                                         ),
                                       ],
                                     ),
@@ -515,10 +628,12 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
                                     productId: item.productId,
                                     productName: item.productName,
                                     quantity: result['quantity'],
-                                    price: result['price'],
-                                    totalPrice: result['quantity'] * result['price'],
+                                    price: item.isBonus ? 0.0 : result['price'],
+                                    totalPrice: item.isBonus ? 0.0 : result['quantity'] * result['price'],
+                                    isBonus: item.isBonus,
                                   );
                                 });
+                                _saveDraft();
                               }
                             },
                           ),
@@ -568,27 +683,28 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
             const SizedBox(height: 24),
             
             // Удаляю/скрываю выбор статуса накладной
-            // if (_currentUser != null && _currentUser!.role != 'sales')
-            //   DropdownButtonFormField<String>(
-            //     value: _selectedStatus,
-            //     decoration: const InputDecoration(
-            //       labelText: 'Статус накладной',
-            //       border: OutlineInputBorder(),
-            //       prefixIcon: Icon(Icons.assignment),
-            //     ),
-            //     items: const [
-            //       DropdownMenuItem(value: 'на рассмотрении', child: Text('На рассмотрении')),
-            //       DropdownMenuItem(value: 'на сборке', child: Text('На сборке')),
-            //       DropdownMenuItem(value: 'передан на доставку', child: Text('Передан на доставку')),
-            //       DropdownMenuItem(value: 'доставлен', child: Text('Доставлен')),
-            //       DropdownMenuItem(value: 'отменен', child: Text('Отменен')),
-            //     ],
-            //     onChanged: (value) {
-            //       setState(() {
-            //         _selectedStatus = value;
-            //       });
-            //     },
-            //   ),
+            if (_currentUser != null && _currentUser!.role != 'sales')
+              DropdownButtonFormField<int>(
+                value: _selectedStatusCode ?? InvoiceStatus.review,
+                decoration: const InputDecoration(
+                  labelText: 'Статус накладной',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.assignment),
+                ),
+                items: [
+                  DropdownMenuItem(value: InvoiceStatus.review, child: Text(InvoiceStatus.getName(InvoiceStatus.review))),
+                  DropdownMenuItem(value: InvoiceStatus.packing, child: Text(InvoiceStatus.getName(InvoiceStatus.packing))),
+                  DropdownMenuItem(value: InvoiceStatus.delivery, child: Text(InvoiceStatus.getName(InvoiceStatus.delivery))),
+                  DropdownMenuItem(value: InvoiceStatus.delivered, child: Text(InvoiceStatus.getName(InvoiceStatus.delivered))),
+                  DropdownMenuItem(value: InvoiceStatus.cancelled, child: Text(InvoiceStatus.getName(InvoiceStatus.cancelled))),
+                ],
+                onChanged: (value) {
+                  setState(() {
+                    _selectedStatusCode = value;
+                  });
+                  _saveDraft();
+                },
+              ),
             
             const SizedBox(height: 24),
             
@@ -599,7 +715,9 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
               child: ElevatedButton(
                 onPressed: _isSubmitting ? null : _saveInvoice,
                 child: Text(
-                  _isSubmitting ? 'Сохранение...' : 'Создать накладную',
+                  _isSubmitting
+                    ? (isEditMode ? 'Сохранение...' : 'Сохранение...')
+                    : (isEditMode ? 'Сохранить изменения' : 'Создать накладную'),
                   style: const TextStyle(fontSize: 16),
                 ),
               ),

@@ -1,6 +1,25 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'invoice_item.dart';
 
+class InvoiceStatus {
+  static const int review = 1;        // На рассмотрении
+  static const int packing = 2;       // На сборке
+  static const int delivery = 3;      // На доставке
+  static const int delivered = 4;     // Доставлен
+  static const int cancelled = 5;     // Отменен
+
+  static String getName(int status) {
+    switch (status) {
+      case review: return 'на рассмотрении';
+      case packing: return 'на сборке';
+      case delivery: return 'на доставке';
+      case delivered: return 'доставлен';
+      case cancelled: return 'отменен';
+      default: return 'неизвестно';
+    }
+  }
+}
+
 class Invoice {
   final String id;
   final String salesRepId;
@@ -11,7 +30,7 @@ class Invoice {
   final Timestamp date;
   final List<InvoiceItem> items;
   final double totalAmount;
-  final String status; // 'transferred', 'delivered', 'cancelled'
+  final int status; // InvoiceStatus.review, ...
   final bool isPaid;
   final String? paymentType; // 'bank', 'cash', null
   final bool isDebt;
@@ -28,7 +47,7 @@ class Invoice {
     required this.date,
     required this.items,
     required this.totalAmount,
-    this.status = 'transferred',
+    this.status = InvoiceStatus.review,
     this.isPaid = false,
     this.paymentType,
     this.isDebt = false,
@@ -64,7 +83,7 @@ class Invoice {
     date: map['date'],
     items: (map['items'] as List).map((e) => InvoiceItem.fromMap(e)).toList(),
     totalAmount: (map['totalAmount'] as num).toDouble(),
-    status: map['status'] ?? 'transferred',
+    status: map['status'] is int ? map['status'] : InvoiceStatus.review,
     isPaid: map['isPaid'] ?? false,
     paymentType: map['paymentType'],
     isDebt: map['isDebt'] ?? false,
@@ -82,7 +101,7 @@ class Invoice {
     Timestamp? date,
     List<InvoiceItem>? items,
     double? totalAmount,
-    String? status,
+    int? status,
     bool? isPaid,
     String? paymentType,
     bool? isDebt,

@@ -40,9 +40,11 @@ class _AdminDeliveryInvoicesScreenState extends State<AdminDeliveryInvoicesScree
       if (widget.forSales) {
         final user = await AuthService().getCurrentUser();
         if (user == null) throw Exception('Пользователь не найден');
-        invoices = await _invoiceService.getInvoicesByStatusAndSalesRepSimple('передан на доставку', user.uid);
+        print('[AdminDeliveryInvoicesScreen] Текущий пользователь: uid=${user.uid}, role=${user.role}, salesRepId=${user.salesRepId}');
+        if (user.salesRepId == null) throw Exception('У пользователя не заполнен salesRepId!');
+        invoices = await _invoiceService.getInvoicesByStatusAndSalesRepSimple(InvoiceStatus.delivery, user.salesRepId!);
       } else {
-        invoices = await _invoiceService.getInvoicesByStatus('передан на доставку');
+        invoices = await _invoiceService.getInvoicesByStatus(InvoiceStatus.delivery);
       }
       final salesReps = await _firebaseService.getSalesReps();
       setState(() {
@@ -130,7 +132,7 @@ class _AdminDeliveryInvoicesScreenState extends State<AdminDeliveryInvoicesScree
             ElevatedButton(
               onPressed: () async {
                 Navigator.pop(context);
-                await _invoiceService.updateInvoiceStatus(invoice.id, 'архив');
+                await _invoiceService.updateInvoiceStatus(invoice.id, InvoiceStatus.delivered);
                 _loadData();
               },
               child: Text('Архивировать'),
@@ -241,7 +243,7 @@ class _AdminDeliveryInvoicesScreenState extends State<AdminDeliveryInvoicesScree
                                                 ),
                                               );
                                               if (confirmed == true) {
-                                                await _invoiceService.updateInvoiceStatus(invoice.id, 'доставлен');
+                                                await _invoiceService.updateInvoiceStatus(invoice.id, InvoiceStatus.delivered);
                                                 _loadData();
                                               }
                                             },

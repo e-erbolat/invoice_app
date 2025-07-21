@@ -160,7 +160,7 @@ class InvoiceService {
   }
 
   // Получить накладные по статусу
-  Future<List<Invoice>> getInvoicesByStatus(String status) async {
+  Future<List<Invoice>> getInvoicesByStatus(int status) async {
     try {
       final querySnapshot = await _firestore
           .collection('invoices')
@@ -169,29 +169,7 @@ class InvoiceService {
           .get();
       return querySnapshot.docs.map((doc) {
         final data = doc.data();
-        return Invoice(
-          id: data['id'],
-          outletId: data['outletId'],
-          outletName: data['outletName'],
-          outletAddress: data['outletAddress'] ?? '',
-          salesRepId: data['salesRepId'],
-          salesRepName: data['salesRepName'],
-          date: data['date'],
-          status: data['status'] ?? 'передан',
-          isPaid: data['isPaid'] ?? false,
-          paymentType: data['paymentType'] ?? 'наличка',
-          isDebt: data['isDebt'] ?? false,
-          acceptedByAdmin: data['acceptedByAdmin'] ?? false,
-          acceptedBySuperAdmin: data['acceptedBySuperAdmin'] ?? false,
-          items: (data['items'] as List).map((item) => InvoiceItem(
-            productId: item['productId'],
-            productName: item['productName'],
-            quantity: item['quantity'],
-            price: (item['price'] as num).toDouble(),
-            totalPrice: (item['totalPrice'] as num).toDouble(),
-          )).toList(),
-          totalAmount: (data['totalAmount'] as num).toDouble(),
-        );
+        return Invoice.fromMap(data);
       }).toList();
     } catch (e) {
       throw Exception('Ошибка загрузки накладных по статусу: $e');
@@ -239,47 +217,20 @@ class InvoiceService {
   }
 
   // Получить накладные по статусу и торговому представителю (без составного индекса)
-  Future<List<Invoice>> getInvoicesByStatusAndSalesRepSimple(String status, String salesRepId) async {
+  Future<List<Invoice>> getInvoicesByStatusAndSalesRepSimple(int status, String salesRepId) async {
     try {
       print('[InvoiceService] getInvoicesByStatusAndSalesRepSimple: статус=$status, salesRepId=$salesRepId');
-      
       final querySnapshot = await _firestore
           .collection('invoices')
           .where('status', isEqualTo: status)
           .orderBy('date', descending: true)
           .get();
-      
       print('[InvoiceService] Получено накладных по статусу $status: ${querySnapshot.docs.length}');
-      
       final filteredDocs = querySnapshot.docs.where((doc) => doc.data()['salesRepId'] == salesRepId);
       print('[InvoiceService] После фильтрации по salesRepId $salesRepId: ${filteredDocs.length}');
-      
       return filteredDocs.map((doc) {
         final data = doc.data();
-        print('[InvoiceService] Обработка накладной ${data['id']}: salesRepId=${data['salesRepId']}');
-        return Invoice(
-          id: data['id'],
-          outletId: data['outletId'],
-          outletName: data['outletName'],
-          outletAddress: data['outletAddress'] ?? '',
-          salesRepId: data['salesRepId'],
-          salesRepName: data['salesRepName'],
-          date: data['date'],
-          status: data['status'] ?? 'передан',
-          isPaid: data['isPaid'] ?? false,
-          paymentType: data['paymentType'] ?? 'наличка',
-          isDebt: data['isDebt'] ?? false,
-          acceptedByAdmin: data['acceptedByAdmin'] ?? false,
-          acceptedBySuperAdmin: data['acceptedBySuperAdmin'] ?? false,
-          items: (data['items'] as List).map((item) => InvoiceItem(
-            productId: item['productId'],
-            productName: item['productName'],
-            quantity: item['quantity'],
-            price: (item['price'] as num).toDouble(),
-            totalPrice: (item['totalPrice'] as num).toDouble(),
-          )).toList(),
-          totalAmount: (data['totalAmount'] as num).toDouble(),
-        );
+        return Invoice.fromMap(data);
       }).toList();
     } catch (e) {
       print('[InvoiceService] Ошибка в getInvoicesByStatusAndSalesRepSimple: $e');
@@ -287,16 +238,24 @@ class InvoiceService {
     }
   }
 
-  // Обновить накладную
+  // Обновить накладную полностью
   Future<void> updateInvoice(Invoice invoice) async {
     try {
       await _firestore.collection('invoices').doc(invoice.id).update({
+        'outletId': invoice.outletId,
+        'outletName': invoice.outletName,
+        'outletAddress': invoice.outletAddress,
+        'salesRepId': invoice.salesRepId,
+        'salesRepName': invoice.salesRepName,
+        'date': invoice.date,
         'status': invoice.status,
         'isPaid': invoice.isPaid,
         'paymentType': invoice.paymentType,
         'isDebt': invoice.isDebt,
         'acceptedByAdmin': invoice.acceptedByAdmin,
         'acceptedBySuperAdmin': invoice.acceptedBySuperAdmin,
+        'items': invoice.items.map((item) => item.toMap()).toList(),
+        'totalAmount': invoice.totalAmount,
       });
     } catch (e) {
       throw Exception('Ошибка обновления накладной: $e');
@@ -304,7 +263,7 @@ class InvoiceService {
   }
 
   // Обновить только статус накладной по id
-  Future<void> updateInvoiceStatus(String invoiceId, String status) async {
+  Future<void> updateInvoiceStatus(String invoiceId, int status) async {
     try {
       await _firestore.collection('invoices').doc(invoiceId).update({'status': status});
     } catch (e) {

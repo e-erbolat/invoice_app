@@ -13,6 +13,7 @@ import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import 'package:excel/excel.dart';
 import 'dart:html' as html;
+import '../screens/invoice_create_screen.dart'; // Added import for InvoiceCreateScreen
 
 class InvoiceListScreen extends StatefulWidget {
   const InvoiceListScreen({super.key});
@@ -72,6 +73,13 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
     } else {
       invoices = await _invoiceService.getAllInvoices();
     }
+
+    // ЛОГИРОВАНИЕ
+    print('[DEBUG] Загружено накладных: ${invoices.length}');
+    for (final inv in invoices) {
+      print('[DEBUG] Invoice id=${inv.id}, status=${inv.status} (type: ${inv.status.runtimeType}), outlet=${inv.outletName}');
+    }
+
     if (mounted) {
       setState(() {
         _currentUser = user;
@@ -376,13 +384,17 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
     }
   }
 
-  Color _getStatusColor(String status) {
+  Color _getStatusColor(int status) {
     switch (status) {
-      case 'передан':
+      case InvoiceStatus.review:
+        return Colors.orange;
+      case InvoiceStatus.packing:
         return Colors.blue;
-      case 'доставлен':
+      case InvoiceStatus.delivery:
+        return Colors.purple;
+      case InvoiceStatus.delivered:
         return Colors.green;
-      case 'отменен':
+      case InvoiceStatus.cancelled:
         return Colors.red;
       default:
         return Colors.grey;
@@ -622,7 +634,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
                                       borderRadius: BorderRadius.circular(12),
                                     ),
                                     child: Text(
-                                      invoice.status,
+                                      InvoiceStatus.getName(invoice.status),
                                       style: const TextStyle(
                                         color: Colors.white,
                                         fontSize: 10,
@@ -691,9 +703,8 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
                                   ],
                                 ],
                               ),
-                              trailing: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                crossAxisAlignment: CrossAxisAlignment.end,
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Text(
                                     '${invoice.totalAmount.toStringAsFixed(2)} ₸',
@@ -702,10 +713,41 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
                                       fontSize: 16,
                                     ),
                                   ),
-                                  const Text(
-                                    'Нажмите для деталей',
-                                    style: TextStyle(fontSize: 10, color: Colors.grey),
-                                  ),
+                                  if (invoice.status == InvoiceStatus.review) ...[
+                                    IconButton(
+                                      icon: const Icon(Icons.edit, color: Colors.deepPurple),
+                                      tooltip: 'Редактировать',
+                                      onPressed: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) => InvoiceCreateScreen(invoiceToEdit: invoice),
+                                          ),
+                                        ).then((_) => _loadUserAndInvoices());
+                                      },
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.delete, color: Colors.red),
+                                      tooltip: 'Удалить',
+                                      onPressed: () async {
+                                        final confirm = await showDialog<bool>(
+                                          context: context,
+                                          builder: (context) => AlertDialog(
+                                            title: const Text('Удалить накладную?'),
+                                            content: const Text('Вы уверены, что хотите удалить накладную?'),
+                                            actions: [
+                                              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Отмена')),
+                                              ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Удалить')),
+                                            ],
+                                          ),
+                                        );
+                                        if (confirm == true) {
+                                          await _invoiceService.deleteInvoice(invoice.id);
+                                          _loadUserAndInvoices();
+                                        }
+                                      },
+                                    ),
+                                  ],
                                 ],
                               ),
                               onTap: () {
@@ -747,7 +789,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
-                      invoice.status,
+                      InvoiceStatus.getName(invoice.status),
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 12,

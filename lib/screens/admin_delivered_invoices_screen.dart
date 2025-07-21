@@ -40,9 +40,11 @@ class _AdminDeliveredInvoicesScreenState extends State<AdminDeliveredInvoicesScr
       if (widget.forSales) {
         final user = await AuthService().getCurrentUser();
         if (user == null) throw Exception('Пользователь не найден');
-        invoices = await _invoiceService.getInvoicesByStatusAndSalesRepSimple('доставлен', user.uid);
+        print('[AdminDeliveredInvoicesScreen] Текущий пользователь: uid=${user.uid}, role=${user.role}, salesRepId=${user.salesRepId}');
+        if (user.salesRepId == null) throw Exception('У пользователя не заполнен salesRepId!');
+        invoices = await _invoiceService.getInvoicesByStatusAndSalesRepSimple(InvoiceStatus.delivered, user.salesRepId!);
       } else {
-        invoices = await _invoiceService.getInvoicesByStatus('доставлен');
+        invoices = await _invoiceService.getInvoicesByStatus(InvoiceStatus.delivered);
       }
       final salesReps = await _firebaseService.getSalesReps();
       setState(() {
@@ -180,7 +182,7 @@ class _AdminDeliveredInvoicesScreenState extends State<AdminDeliveredInvoicesScr
                 Navigator.pop(context);
                 await _invoiceService.updateInvoicePayment(invoice.id, isPaid, paymentType, comment);
                 if (isPaid) {
-                  await _invoiceService.updateInvoiceStatus(invoice.id, 'архив');
+                  await _invoiceService.updateInvoiceStatus(invoice.id, InvoiceStatus.delivered);
                 }
                 _loadData();
               },

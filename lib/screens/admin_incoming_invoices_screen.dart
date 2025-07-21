@@ -6,6 +6,7 @@ import '../services/firebase_service.dart';
 import 'invoice_screen.dart';
 import 'package:intl/intl.dart';
 import '../services/auth_service.dart';
+import 'invoice_create_screen.dart';
 
 class AdminIncomingInvoicesScreen extends StatefulWidget {
   final bool forSales;
@@ -40,10 +41,15 @@ class _AdminIncomingInvoicesScreenState extends State<AdminIncomingInvoicesScree
       if (widget.forSales) {
         final user = await AuthService().getCurrentUser();
         if (user == null) throw Exception('Пользователь не найден');
-        print('[AdminIncomingInvoicesScreen] Текущий пользователь: uid=${user.uid}, role=${user.role}');
-        invoices = await _invoiceService.getInvoicesByStatusAndSalesRepSimple('на рассмотрении', user.uid);
+        print('[AdminIncomingInvoicesScreen] Текущий пользователь: uid= [33m${user.uid} [0m, role=${user.role}, salesRepId=${user.salesRepId}');
+        if (user.salesRepId == null) throw Exception('У пользователя не заполнен salesRepId!');
+        invoices = await _invoiceService.getInvoicesByStatusAndSalesRepSimple(InvoiceStatus.review, user.salesRepId!);
       } else {
-        invoices = await _invoiceService.getInvoicesByStatus('на рассмотрении');
+        invoices = await _invoiceService.getInvoicesByStatus(InvoiceStatus.review);
+      }
+      print('[DEBUG] Загружено накладных: ${invoices.length}');
+      for (final inv in invoices) {
+        print('[DEBUG] Invoice id=${inv.id}, status=${inv.status} (type: ${inv.status.runtimeType}), salesRepId=${inv.salesRepId}, outletId=${inv.outletId}');
       }
       final salesReps = await _firebaseService.getSalesReps();
       setState(() {
@@ -52,14 +58,10 @@ class _AdminIncomingInvoicesScreenState extends State<AdminIncomingInvoicesScree
         _salesReps = salesReps;
         _isLoading = false;
       });
-      
-      // Добавляем отладочную информацию
-      print('[AdminIncomingInvoicesScreen] Загружено накладных: ${invoices.length}');
-      for (var invoice in invoices) {
-        print('[AdminIncomingInvoicesScreen] Накладная ${invoice.id}: статус = ${invoice.status}');
+      print('[DEBUG] После фильтрации (по умолчанию): ${_filteredInvoices.length}');
+      for (final inv in _filteredInvoices) {
+        print('[DEBUG] [FILTERED] Invoice id=${inv.id}, status=${inv.status} (type: ${inv.status.runtimeType}), salesRepId=${inv.salesRepId}, outletId=${inv.outletId}');
       }
-      
-      debugPrint('[AdminIncomingInvoicesScreen] Загружено накладных: "${invoices.length.toString()}"');
     } catch (e, st) {
       debugPrint('[AdminIncomingInvoicesScreen] Ошибка: $e\n$st');
       setState(() {
@@ -71,8 +73,10 @@ class _AdminIncomingInvoicesScreenState extends State<AdminIncomingInvoicesScree
 
   void _filterInvoices() {
     List<Invoice> filtered = _invoices;
+    print('[DEBUG] Фильтрация накладных: всего ${filtered.length}');
     if (_selectedSalesRepId != null && _selectedSalesRepId != 'all') {
       filtered = filtered.where((inv) => inv.salesRepId == _selectedSalesRepId).toList();
+      print('[DEBUG] После фильтрации по salesRepId ($_selectedSalesRepId): ${filtered.length}');
     }
     if (_selectedPaymentStatus != null && _selectedPaymentStatus != 'all') {
       if (_selectedPaymentStatus == 'paid') {
@@ -82,16 +86,23 @@ class _AdminIncomingInvoicesScreenState extends State<AdminIncomingInvoicesScree
       } else if (_selectedPaymentStatus == 'debt') {
         filtered = filtered.where((inv) => inv.isDebt).toList();
       }
+      print('[DEBUG] После фильтрации по оплате ($_selectedPaymentStatus): ${filtered.length}');
     }
     if (_dateFrom != null) {
       filtered = filtered.where((inv) => inv.date.toDate().isAfter(_dateFrom!) || inv.date.toDate().isAtSameMomentAs(_dateFrom!)).toList();
+      print('[DEBUG] После фильтрации по дате с ($_dateFrom): ${filtered.length}');
     }
     if (_dateTo != null) {
       filtered = filtered.where((inv) => inv.date.toDate().isBefore(_dateTo!.add(const Duration(days: 1)))).toList();
+      print('[DEBUG] После фильтрации по дате по ($_dateTo): ${filtered.length}');
     }
     setState(() {
       _filteredInvoices = filtered;
     });
+    print('[DEBUG] Итоговое количество накладных после всех фильтров: ${_filteredInvoices.length}');
+    for (final inv in _filteredInvoices) {
+      print('[DEBUG] [FINAL] Invoice id=${inv.id}, status=${inv.status} (type: ${inv.status.runtimeType}), salesRepId=${inv.salesRepId}, outletId=${inv.outletId}');
+    }
   }
 
   Future<void> _selectDate(BuildContext context, bool isFrom) async {
@@ -138,7 +149,7 @@ class _AdminIncomingInvoicesScreenState extends State<AdminIncomingInvoicesScree
             ElevatedButton(
               onPressed: () async {
                 Navigator.pop(context);
-                await _invoiceService.updateInvoiceStatus(invoice.id, 'на сборке');
+                await _invoiceService.updateInvoiceStatus(invoice.id, InvoiceStatus.packing);
                 _loadData();
               },
               child: Text('Принять'),
@@ -214,12 +225,55 @@ class _AdminIncomingInvoicesScreenState extends State<AdminIncomingInvoicesScree
                             return ListTile(
                               title: Text('Накладная №${invoice.id}'),
                               subtitle: Text('Точка: ${invoice.outletName}\nТорговый: ${invoice.salesRepName}'),
-                              trailing: widget.forSales
-                                  ? null
-                                  : ElevatedButton(
-                                child: Text('Принять'),
-                                onPressed: () => _showConfirmDialog(invoice),
-                              ),
+                              trailing: invoice.status == InvoiceStatus.review
+                                ? Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        icon: Icon(Icons.edit, color: Colors.deepPurple),
+                                        tooltip: 'Редактировать',
+                                        onPressed: () {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (context) => InvoiceCreateScreen(invoiceToEdit: invoice),
+                                            ),
+                                          ).then((_) => _loadData());
+                                        },
+                                      ),
+                                      if (!widget.forSales)
+                                        IconButton(
+                                          icon: Icon(Icons.check_circle, color: Colors.green),
+                                          tooltip: 'Принять',
+                                          onPressed: () async {
+                                            await _invoiceService.updateInvoiceStatus(invoice.id, InvoiceStatus.packing);
+                                            _loadData();
+                                          },
+                                        ),
+                                      IconButton(
+                                        icon: Icon(Icons.delete, color: Colors.red),
+                                        tooltip: 'Отклонить',
+                                        onPressed: () async {
+                                          final confirm = await showDialog<bool>(
+                                            context: context,
+                                            builder: (context) => AlertDialog(
+                                              title: Text('Отклонить накладную?'),
+                                              content: Text('Вы уверены, что хотите отклонить (удалить) накладную?'),
+                                              actions: [
+                                                TextButton(onPressed: () => Navigator.pop(context, false), child: Text('Отмена')),
+                                                ElevatedButton(onPressed: () => Navigator.pop(context, true), child: Text('Отклонить')),
+                                              ],
+                                            ),
+                                          );
+                                          if (confirm == true) {
+                                            await _invoiceService.deleteInvoice(invoice.id);
+                                            _loadData();
+                                          }
+                                        },
+                                      ),
+                                    ],
+                                  )
+                                : null,
                               onTap: () {
                                 Navigator.push(
                                   context,
