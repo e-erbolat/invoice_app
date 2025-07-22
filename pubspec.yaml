@@ -18,6 +18,7 @@ dependencies:
   excel: ^2.0.6
   shared_preferences: ^2.2.2
   share_plus: ^7.2.1
+  file_saver: ^0.2.12
 
 flutter:
   uses-material-design: true

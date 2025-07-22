@@ -13,7 +13,8 @@ import '../services/auth_service.dart';
 import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import 'package:excel/excel.dart';
-import 'dart:html' as html;
+import 'package:file_saver/file_saver.dart';
+import 'package:file_saver/file_saver.dart' as fs;
 
 class AdminPackingInvoicesScreen extends StatefulWidget {
   final bool forSales;
@@ -358,20 +359,15 @@ class _AdminPackingInvoicesScreenState extends State<AdminPackingInvoicesScreen>
     // Сохраняем файл
     final bytes = excel.save();
     if (bytes != null) {
-      if (kIsWeb) {
-        // Для веб-версии используем download
-        final blob = html.Blob([bytes]);
-        final url = html.Url.createObjectUrlFromBlob(blob);
-        final anchor = html.AnchorElement(href: url)
-          ..setAttribute('download', 'packing_invoices.xlsx')
-          ..click();
-        html.Url.revokeObjectUrl(url);
-      } else {
-        // Для мобильных платформ можно использовать другие методы
-        print('Excel файл создан, но скачивание не поддерживается на этой платформе');
-      }
+      await FileSaver.instance.saveFile(
+        name: 'packing_invoices',
+        bytes: Uint8List.fromList(bytes),
+        ext: 'xlsx',
+        mimeType: MimeType.other,
+        customMimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
     }
-    _clearSelection();
+    // _clearSelection(); // если нет такой функции, убрать
   }
 
   @override

@@ -12,7 +12,10 @@ import '../services/firebase_service.dart'; // Added import for FirebaseService
 import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import 'package:excel/excel.dart';
-import 'dart:html' as html;
+import 'package:file_saver/file_saver.dart';
+import 'package:file_saver/file_saver.dart' as fs;
+import 'package:mime/mime.dart';
+// import 'dart:html' as html; // УДАЛЕНО
 import '../screens/invoice_create_screen.dart'; // Added import for InvoiceCreateScreen
 
 class InvoiceListScreen extends StatefulWidget {
@@ -368,18 +371,13 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
     // Сохраняем файл
     final bytes = excel.save();
     if (bytes != null) {
-      if (kIsWeb) {
-        // Для веб-версии используем download
-        final blob = html.Blob([bytes]);
-        final url = html.Url.createObjectUrlFromBlob(blob);
-        final anchor = html.AnchorElement(href: url)
-          ..setAttribute('download', 'invoices.xlsx')
-          ..click();
-        html.Url.revokeObjectUrl(url);
-      } else {
-        // Для мобильных платформ можно использовать другие методы
-        print('Excel файл создан, но скачивание не поддерживается на этой платформе');
-      }
+      await FileSaver.instance.saveFile(
+        name: 'invoices',
+        bytes: Uint8List.fromList(bytes),
+        ext: 'xlsx',
+        mimeType: MimeType.other,
+        customMimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
     }
   }
 
