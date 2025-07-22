@@ -351,7 +351,6 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
       
       // Адрес доставки
       sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: currentRow)).value = 'адрес доставки: ${invoice.outletAddress}';
-      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: currentRow)).value = 'конс';
       sheet.cell(CellIndex.indexByColumnRow(columnIndex: 6, rowIndex: currentRow)).value = 'долг';
       sheet.cell(CellIndex.indexByColumnRow(columnIndex: 7, rowIndex: currentRow)).value = invoice.totalAmount;
       currentRow++;

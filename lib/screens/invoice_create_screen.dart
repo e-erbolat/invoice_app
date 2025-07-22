@@ -55,8 +55,12 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
     super.initState();
     _autocompleteProductController = TextEditingController();
     _autocompleteProductFocusNode = FocusNode();
-    _loadData();
-    if (!isEditMode) _loadDraftIfExists();
+    _initAll();
+  }
+
+  Future<void> _initAll() async {
+    await _loadData();
+    if (!isEditMode) await _loadDraftIfExists();
   }
 
   void _preFillFromInvoice(Invoice invoice) {
@@ -268,8 +272,12 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
         outletId: _selectedOutlet!.id,
         outletName: _selectedOutlet!.name,
         outletAddress: _selectedOutlet!.address,
-        salesRepId: _selectedSalesRep!.id,
-        salesRepName: _selectedSalesRep!.name,
+        salesRepId: (_currentUser != null && _currentUser!.role == 'sales')
+            ? (_currentUser!.salesRepId ?? _currentUser!.uid)
+            : _selectedSalesRep!.id,
+        salesRepName: (_currentUser != null && _currentUser!.role == 'sales')
+            ? (_selectedSalesRep?.name ?? _currentUser!.email)
+            : _selectedSalesRep!.name,
         date: Timestamp.fromDate(_selectedDate),
         status: status,
         isPaid: false,
