@@ -7,6 +7,8 @@ import 'invoice_screen.dart';
 import 'package:intl/intl.dart';
 import '../services/auth_service.dart';
 import 'invoice_create_screen.dart';
+import 'package:share_plus/share_plus.dart';
+import '../models/outlet.dart';
 
 class AdminIncomingInvoicesScreen extends StatefulWidget {
   final bool forSales;
@@ -21,6 +23,7 @@ class _AdminIncomingInvoicesScreenState extends State<AdminIncomingInvoicesScree
   List<Invoice> _invoices = [];
   List<Invoice> _filteredInvoices = [];
   List<SalesRep> _salesReps = [];
+  List<Outlet> _outlets = [];
   bool _isLoading = true;
   String? _selectedSalesRepId;
   String? _selectedPaymentStatus; // 'all', 'paid', 'not_paid', 'debt'
@@ -52,10 +55,12 @@ class _AdminIncomingInvoicesScreenState extends State<AdminIncomingInvoicesScree
         print('[DEBUG] Invoice id=${inv.id}, status=${inv.status} (type: ${inv.status.runtimeType}), salesRepId=${inv.salesRepId}, outletId=${inv.outletId}');
       }
       final salesReps = await _firebaseService.getSalesReps();
+      final outlets = await _firebaseService.getOutlets();
       setState(() {
         _invoices = invoices;
         _filteredInvoices = invoices;
         _salesReps = salesReps;
+        _outlets = outlets;
         _isLoading = false;
       });
       print('[DEBUG] После фильтрации (по умолчанию): ${_filteredInvoices.length}');
@@ -271,6 +276,44 @@ class _AdminIncomingInvoicesScreenState extends State<AdminIncomingInvoicesScree
                                           }
                                         },
                                       ),
+                                      if (widget.forSales)
+                                        IconButton(
+                                          icon: Icon(Icons.share, color: Colors.blue),
+                                          tooltip: 'Поделиться',
+                                          onPressed: () {
+                                            final outlet = _outlets.firstWhere(
+                                              (o) => o.id == invoice.outletId,
+                                              orElse: () => Outlet(
+                                                id: '',
+                                                name: invoice.outletName,
+                                                address: invoice.outletAddress,
+                                                phone: '',
+                                                contactPerson: '',
+                                                region: '',
+                                                createdAt: DateTime.now(),
+                                                updatedAt: DateTime.now(),
+                                              ),
+                                            );
+                                            final buffer = StringBuffer();
+                                            buffer.writeln('${outlet.name}');
+                                            buffer.writeln('Адрес: ${outlet.address}');
+                                            if (outlet.contactPerson.isNotEmpty || outlet.phone.isNotEmpty) {
+                                              buffer.writeln('${outlet.contactPerson} ${outlet.phone}'.trim());
+                                            }
+                                            for (final item in invoice.items.where((i) => !i.isBonus)) {
+                                              buffer.writeln('${item.productName} - ${item.quantity} шт х ${item.price.toStringAsFixed(0)} тг');
+                                            }
+                                            final bonusItems = invoice.items.where((i) => i.isBonus).toList();
+                                            if (bonusItems.isNotEmpty) {
+                                              buffer.writeln('Бонус:');
+                                              for (final item in bonusItems) {
+                                                buffer.writeln('${item.productName} - ${item.quantity} шт');
+                                              }
+                                            }
+                                            buffer.writeln('Итого: ${invoice.totalAmount.toStringAsFixed(0)} тг');
+                                            Share.share(buffer.toString());
+                                          },
+                                        ),
                                     ],
                                   )
                                 : null,
