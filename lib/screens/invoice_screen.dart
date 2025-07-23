@@ -54,10 +54,17 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
                       Text('Сумма: ${_invoice!.totalAmount.toStringAsFixed(2)} ₸'),
                       SizedBox(height: 16),
                       Text('Товары:', style: TextStyle(fontWeight: FontWeight.bold)),
-                      ..._invoice!.items.map((item) => ListTile(
+                      ..._invoice!.items.where((item) => !item.isBonus).map((item) => ListTile(
                         title: Text(item.productName),
                         subtitle: Text('${item.quantity} × ${item.price.toStringAsFixed(2)} ₸'),
                         trailing: Text('${item.totalPrice.toStringAsFixed(2)} ₸'),
+                      )),
+                      if (_invoice!.items.any((item) => !item.isBonus) && _invoice!.items.any((item) => item.isBonus))
+                        ...[SizedBox(height: 16), SizedBox(height: 16)],
+                      ..._invoice!.items.where((item) => item.isBonus).map((item) => ListTile(
+                        title: Text(item.productName),
+                        subtitle: Text('${item.quantity} шт (бонус)'),
+                        trailing: Text(''),
                       )),
                     ],
                   ),

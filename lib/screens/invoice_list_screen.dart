@@ -602,28 +602,43 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
                         itemCount: _filteredInvoices.length,
                         itemBuilder: (context, index) {
                           final invoice = _filteredInvoices[index];
+                          final date = invoice.date.toDate();
+                          final dateStr = DateFormat('dd.MM.yyyy').format(date);
+                          final dateNum = DateFormat('ddMMyyyy').format(date);
+                          String suffix = '';
+                          final idMatch = RegExp(r'(\d{4})$').firstMatch(invoice.id);
+                          if (idMatch != null) {
+                            suffix = idMatch.group(1)!;
+                          } else {
+                            suffix = (index + 1).toString().padLeft(4, '0');
+                          }
+                          final customNumber = '$dateNum-$suffix';
+                          final bgColor = index % 2 == 0 ? Colors.white : Colors.grey.shade100;
                           final isSelected = _selectedInvoiceIds.contains(invoice.id);
-                          return Card(
-                            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                          return Container(
+                            color: bgColor,
                             child: ListTile(
-                              leading: Checkbox(
-                                value: isSelected,
-                                onChanged: (value) => _toggleInvoiceSelection(invoice.id),
+                              leading: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text('${index + 1}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                                  Text(dateStr, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                ],
                               ),
                               title: Text(
-                                'Накладная #${invoice.id.substring(invoice.id.length - 6)}',
+                                'Накладная $customNumber',
                                 style: const TextStyle(fontWeight: FontWeight.bold),
                               ),
                               subtitle: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text('${invoice.outletName} • ${invoice.salesRepName}'),
+                                  Text('Адрес: ${invoice.outletAddress}'),
                                   Text(
                                     '${DateFormat('dd.MM.yyyy').format(invoice.date.toDate())} • ${invoice.items.length} товаров',
                                     style: const TextStyle(color: Colors.grey),
                                   ),
                                   const SizedBox(height: 4),
-                                  // Статус накладной
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                     decoration: BoxDecoration(
@@ -640,7 +655,6 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
                                     ),
                                   ),
                                   const SizedBox(height: 2),
-                                  // Статус оплаты
                                   Row(
                                     children: [
                                       Icon(
@@ -663,7 +677,6 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
                                       ),
                                     ],
                                   ),
-                                  // Принятие денег
                                   if (invoice.isPaid) ...[
                                     const SizedBox(height: 2),
                                     Row(
@@ -700,57 +713,11 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
                                   ],
                                 ],
                               ),
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    '${invoice.totalAmount.toStringAsFixed(2)} ₸',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                  if (invoice.status == InvoiceStatus.review) ...[
-                                    IconButton(
-                                      icon: const Icon(Icons.edit, color: Colors.deepPurple),
-                                      tooltip: 'Редактировать',
-                                      onPressed: () {
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (context) => InvoiceCreateScreen(invoiceToEdit: invoice),
-                                          ),
-                                        ).then((_) => _loadUserAndInvoices());
-                                      },
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(Icons.delete, color: Colors.red),
-                                      tooltip: 'Удалить',
-                                      onPressed: () async {
-                                        final confirm = await showDialog<bool>(
-                                          context: context,
-                                          builder: (context) => AlertDialog(
-                                            title: const Text('Удалить накладную?'),
-                                            content: const Text('Вы уверены, что хотите удалить накладную?'),
-                                            actions: [
-                                              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Отмена')),
-                                              ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Удалить')),
-                                            ],
-                                          ),
-                                        );
-                                        if (confirm == true) {
-                                          await _invoiceService.deleteInvoice(invoice.id);
-                                          _loadUserAndInvoices();
-                                        }
-                                      },
-                                    ),
-                                  ],
-                                ],
+                              trailing: Checkbox(
+                                value: isSelected,
+                                onChanged: (value) => _toggleInvoiceSelection(invoice.id),
                               ),
-                              onTap: () {
-                                // Показать детали накладной
-                                _showInvoiceDetails(invoice);
-                              },
+                              onTap: () => _toggleInvoiceSelection(invoice.id),
                             ),
                           );
                         },

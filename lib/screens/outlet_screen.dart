@@ -19,6 +19,13 @@ class _OutletScreenState extends State<OutletScreen> {
   bool _isLoading = true;
   String _searchQuery = '';
 
+  String _sortField = 'name';
+  final Map<String, String> _sortOptions = {
+    'name': 'Имя',
+    'address': 'Адрес',
+    'phone': 'Телефон',
+  };
+
   @override
   void initState() {
     super.initState();
@@ -41,14 +48,28 @@ class _OutletScreenState extends State<OutletScreen> {
   }
 
   List<Outlet> get _filteredOutlets {
-    if (_searchQuery.isEmpty) {
-      return _outlets;
-    }
-    return _outlets.where((outlet) =>
-        outlet.name.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-        outlet.region.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-        outlet.contactPerson.toLowerCase().contains(_searchQuery.toLowerCase())
-    ).toList();
+    List<Outlet> filtered = _searchQuery.isEmpty
+        ? _outlets
+        : _outlets.where((outlet) =>
+            outlet.name.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+            outlet.region.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+            outlet.contactPerson.toLowerCase().contains(_searchQuery.toLowerCase())
+          ).toList();
+    // Сортировка по выбранному полю
+    filtered.sort((a, b) {
+      final aValue = _sortField == 'name'
+          ? a.name
+          : _sortField == 'address'
+              ? a.address
+              : a.phone;
+      final bValue = _sortField == 'name'
+          ? b.name
+          : _sortField == 'address'
+              ? b.address
+              : b.phone;
+      return aValue.toLowerCase().compareTo(bValue.toLowerCase());
+    });
+    return filtered;
   }
 
   void _showAddEditDialog([Outlet? outlet]) {
@@ -175,6 +196,27 @@ class _OutletScreenState extends State<OutletScreen> {
                       });
                     },
                   ),
+                ),
+                const SizedBox(width: 8),
+                DropdownButton<String>(
+                  value: _sortField,
+                  items: _sortOptions.entries
+                      .map((e) => DropdownMenuItem<String>(
+                            value: e.key,
+                            child: Text(e.value),
+                          ))
+                      .toList(),
+                  onChanged: (value) {
+                    if (value != null) {
+                      setState(() {
+                        _sortField = value;
+                      });
+                    }
+                  },
+                  underline: Container(),
+                  style: const TextStyle(fontSize: 14, color: Colors.black),
+                  icon: const Icon(Icons.sort),
+                  hint: const Text('Сортировка'),
                 ),
                 IconButton(
                   icon: const Icon(Icons.refresh),

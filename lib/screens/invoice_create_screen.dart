@@ -455,6 +455,7 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
                       },
                       displayStringForOption: (Product option) => option.name,
                       fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+                        _autocompleteProductController = controller;
                         return TextFormField(
                           controller: controller,
                           focusNode: focusNode,

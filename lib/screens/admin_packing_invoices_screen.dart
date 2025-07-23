@@ -301,53 +301,106 @@ class _AdminPackingInvoicesScreenState extends State<AdminPackingInvoicesScreen>
     // Создаем Excel документ
     final excel = Excel.createExcel();
     final sheet = excel['Накладные на сборке'];
-    
+    final cellStyle = CellStyle(
+      fontFamily: 'Times New Roman',
+      fontSize: 25,
+      horizontalAlign: HorizontalAlign.Center,
+      verticalAlign: VerticalAlign.Center,
+    );
     int currentRow = 0;
     
     for (int invoiceIndex = 0; invoiceIndex < selected.length; invoiceIndex++) {
       final invoice = selected[invoiceIndex];
       
       // Заголовок накладной (строка 1)
-      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: currentRow)).value = 'MELLO AQTOBE';
-      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 6, rowIndex: currentRow)).value = DateFormat('dd.MM.yyyy').format(invoice.date.toDate());
+      var cell1 = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: currentRow));
+      cell1.value = 'MELLO AQTOBE';
+      cell1.cellStyle = cellStyle;
+      var cell2 = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: currentRow));
+      cell2.value = DateFormat('dd.MM.yyyy').format(invoice.date.toDate());
+      cell2.cellStyle = cellStyle;
       currentRow++;
       
       // Заголовки таблицы (строка 2)
-      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: currentRow)).value = '№';
-      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: currentRow)).value = 'Наименование товара';
-      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: currentRow)).value = 'Цена по прайсу';
-      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: currentRow)).value = 'Цена со скидкой';
-      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: currentRow)).value = 'Количество';
-      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 6, rowIndex: currentRow)).value = 'Итого';
+      for (int col = 0; col <= 5; col++) {
+        var cell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: currentRow));
+        switch (col) {
+          case 0: cell.value = '№'; break;
+          case 1: cell.value = 'Наименование товара'; break;
+          case 2: cell.value = 'Цена по прайсу'; break;
+          case 3: cell.value = 'Цена со скидкой'; break;
+          case 4: cell.value = 'Количество'; break;
+          case 5: cell.value = 'Итого'; break;
+        }
+        cell.cellStyle = cellStyle;
+      }
       currentRow++;
       
-      // Товары
-      for (int itemIndex = 0; itemIndex < invoice.items.length; itemIndex++) {
-        final item = invoice.items[itemIndex];
-        sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: currentRow)).value = itemIndex + 1;
-        sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: currentRow)).value = item.productName;
-        sheet.cell(CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: currentRow)).value = item.price;
-        sheet.cell(CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: currentRow)).value = item.price;
-        sheet.cell(CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: currentRow)).value = item.quantity;
-        sheet.cell(CellIndex.indexByColumnRow(columnIndex: 6, rowIndex: currentRow)).value = item.totalPrice;
+      // Товары: сначала обычные, потом бонусные
+      final nonBonusItems = invoice.items.where((item) => !item.isBonus).toList();
+      final bonusItems = invoice.items.where((item) => item.isBonus).toList();
+      for (int itemIndex = 0; itemIndex < nonBonusItems.length; itemIndex++) {
+        final item = nonBonusItems[itemIndex];
+        for (int col = 0; col <= 5; col++) {
+          var cell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: currentRow));
+          switch (col) {
+            case 0: cell.value = itemIndex + 1; break;
+            case 1: cell.value = item.productName; break;
+            case 2: cell.value = item.price; break;
+            case 3: cell.value = item.price; break;
+            case 4: cell.value = item.quantity; break;
+            case 5: cell.value = item.totalPrice; break;
+          }
+          cell.cellStyle = cellStyle;
+        }
+        currentRow++;
+      }
+      for (int itemIndex = 0; itemIndex < bonusItems.length; itemIndex++) {
+        final item = bonusItems[itemIndex];
+        for (int col = 0; col <= 5; col++) {
+          var cell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: currentRow));
+          switch (col) {
+            case 0: cell.value = nonBonusItems.length + itemIndex + 1; break;
+            case 1: cell.value = 'Бонус ${item.productName}'; break;
+            case 2: cell.value = item.price; break;
+            case 3: cell.value = item.price; break;
+            case 4: cell.value = item.quantity; break;
+            case 5: cell.value = item.totalPrice; break;
+          }
+          cell.cellStyle = cellStyle;
+        }
         currentRow++;
       }
       
       // Итоги
       final totalQuantity = invoice.items.fold<int>(0, (sum, item) => sum + item.quantity);
-      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: currentRow)).value = 'Итого';
-      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: currentRow)).value = totalQuantity;
-      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 6, rowIndex: currentRow)).value = invoice.totalAmount;
+      var cellItogo = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: currentRow));
+      cellItogo.value = 'Итого';
+      cellItogo.cellStyle = cellStyle;
+      var cellQty = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: currentRow));
+      cellQty.value = totalQuantity;
+      cellQty.cellStyle = cellStyle;
+      var cellSum = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: currentRow));
+      cellSum.value = invoice.totalAmount;
+      cellSum.cellStyle = cellStyle;
       currentRow++;
       
       // Адрес доставки
-      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: currentRow)).value = 'адрес доставки: ${invoice.outletAddress}';
-      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 6, rowIndex: currentRow)).value = 'долг';
-      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 7, rowIndex: currentRow)).value = invoice.totalAmount;
+      var cellAddr = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: currentRow));
+      cellAddr.value = 'адрес доставки: ${invoice.outletName}, ${invoice.outletAddress}';
+      cellAddr.cellStyle = cellStyle;
+      var cellDebt = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: currentRow));
+      cellDebt.value = 'долг';
+      cellDebt.cellStyle = cellStyle;
+      var cellDebtSum = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: currentRow));
+      cellDebtSum.value = invoice.totalAmount;
+      cellDebtSum.cellStyle = cellStyle;
       currentRow++;
       
       // Контактная информация
-      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: currentRow)).value = '${invoice.salesRepName}';
+      var cellContact = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: currentRow));
+      cellContact.value = '${invoice.salesRepName}';
+      cellContact.cellStyle = cellStyle;
       currentRow++;
       
       // Пустая строка между накладными
@@ -355,6 +408,7 @@ class _AdminPackingInvoicesScreenState extends State<AdminPackingInvoicesScreen>
         currentRow++;
       }
     }
+    
     
     // Сохраняем файл
     final bytes = excel.save();
@@ -384,115 +438,172 @@ class _AdminPackingInvoicesScreenState extends State<AdminPackingInvoicesScreen>
               children: [
                 Padding(
                   padding: const EdgeInsets.all(8.0),
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Удаляю фильтры по торговому и оплате, оставляю только даты
-                      OutlinedButton(
-                        onPressed: () => _selectDate(context, true),
-                        child: Text(_dateFrom == null ? 'С даты' : DateFormat('dd.MM.yyyy').format(_dateFrom!)),
+                      Row(
+                        children: [
+                          Checkbox(
+                            value: _filteredInvoices.isNotEmpty && _filteredInvoices.every((inv) => _selectedInvoiceIds.contains(inv.id)),
+                            tristate: false,
+                            onChanged: (val) {
+                              setState(() {
+                                if (val == true) {
+                                  _selectedInvoiceIds.addAll(_filteredInvoices.map((inv) => inv.id));
+                                } else {
+                                  _selectedInvoiceIds.removeAll(_filteredInvoices.map((inv) => inv.id));
+                                }
+                              });
+                            },
+                          ),
+                          Text('Выбрано:  ${_selectedInvoiceIds.length} из ${_filteredInvoices.length}', style: TextStyle(fontWeight: FontWeight.w500)),
+                          const SizedBox(width: 12),
+                          OutlinedButton(
+                            onPressed: () => _selectDate(context, true),
+                            child: Text(_dateFrom == null ? 'С даты' : DateFormat('dd.MM.yyyy').format(_dateFrom!)),
+                          ),
+                          const SizedBox(width: 4),
+                          OutlinedButton(
+                            onPressed: () => _selectDate(context, false),
+                            child: Text(_dateTo == null ? 'По дату' : DateFormat('dd.MM.yyyy').format(_dateTo!)),
+                          ),
+                          const SizedBox(width: 4),
+                          OutlinedButton(
+                            onPressed: () {
+                              final now = DateTime.now();
+                              final today = DateTime(now.year, now.month, now.day);
+                              setState(() {
+                                _dateFrom = today;
+                                _dateTo = today;
+                              });
+                              _filterInvoices();
+                            },
+                            child: Text('Сегодня'),
+                          ),
+                          const SizedBox(width: 4),
+                          OutlinedButton(
+                            onPressed: () {
+                              final now = DateTime.now().add(Duration(days: 1));
+                              final tomorrow = DateTime(now.year, now.month, now.day);
+                              setState(() {
+                                _dateFrom = tomorrow;
+                                _dateTo = tomorrow;
+                              });
+                              _filterInvoices();
+                            },
+                            child: Text('Завтра'),
+                          ),
+                          const SizedBox(width: 4),
+                          OutlinedButton(
+                            onPressed: _clearFilters,
+                            child: Text('Сбросить фильтры'),
+                          ),
+                          const Spacer(),
+                          Builder(
+                            builder: (context) {
+                              final selected = _filteredInvoices.where((inv) => _selectedInvoiceIds.contains(inv.id)).toList();
+                              final total = selected.fold<double>(0.0, (sum, inv) => sum + inv.totalAmount);
+                              return Text(
+                                'Общая сумма: ${total.toStringAsFixed(2)} ₸',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.deepPurple,
+                                  fontSize: 16,
+                                ),
+                              );
+                            },
+                          ),
+                        ],
                       ),
-                      OutlinedButton(
-                        onPressed: () => _selectDate(context, false),
-                        child: Text(_dateTo == null ? 'По дату' : DateFormat('dd.MM.yyyy').format(_dateTo!)),
-                      ),
+                      if (_selectedInvoiceIds.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            ElevatedButton.icon(
+                              icon: Icon(Icons.table_chart),
+                              label: Text('Экспорт в Excel'),
+                              onPressed: _exportSelectedInvoicesToExcel,
+                              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                            ),
+                            const SizedBox(width: 12),
+                            ElevatedButton.icon(
+                              icon: Icon(Icons.picture_as_pdf),
+                              label: Text('Экспорт в PDF'),
+                              onPressed: _exportSelectedInvoices,
+                              style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple),
+                            ),
+                          ],
+                        ),
+                      ],
                     ],
                   ),
                 ),
                 Expanded(
                   child: _filteredInvoices.isEmpty
                       ? Center(child: Text('Нет накладных на сборке'))
-                      : Column(
-                          children: [
-                            if (_selectionMode)
-                              Row(
+                      : ListView.builder(
+                        itemCount: _filteredInvoices.length,
+                        itemBuilder: (context, index) {
+                          final invoice = _filteredInvoices[index];
+                          final date = invoice.date.toDate();
+                          final dateStr = DateFormat('dd.MM.yyyy').format(date);
+                          final dateNum = DateFormat('ddMMyyyy').format(date);
+                          String suffix = '';
+                          final idMatch = RegExp(r'(\d{4})$').firstMatch(invoice.id);
+                          if (idMatch != null) {
+                            suffix = idMatch.group(1)!;
+                          } else {
+                            suffix = (index + 1).toString().padLeft(4, '0');
+                          }
+                          final customNumber = '$dateNum-$suffix';
+                          final bgColor = index % 2 == 0 ? Colors.white : Colors.grey.shade100;
+                          return Container(
+                            color: bgColor,
+                            child: ListTile(
+                              leading: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  ElevatedButton.icon(
-                                    icon: Icon(Icons.picture_as_pdf),
-                                    label: Text('PDF'),
-                                    onPressed: _exportSelectedInvoices,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  ElevatedButton.icon(
-                                    icon: Icon(Icons.table_chart),
-                                    label: Text('Excel'),
-                                    onPressed: _exportSelectedInvoicesToExcel,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  ElevatedButton.icon(
-                                    icon: Icon(Icons.done_all),
-                                    label: Text('Принять все'),
-                                    onPressed: _acceptAllSelected,
-                                  ),
-                                  TextButton(
-                                    onPressed: _clearSelection,
-                                    child: Text('Отмена'),
-                                  ),
+                                  Text('${index + 1}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                                  Text(dateStr, style: const TextStyle(fontSize: 12, color: Colors.grey)),
                                 ],
                               ),
-                            Expanded(
-                              child: ListView.builder(
-                                itemCount: _filteredInvoices.length,
-                                itemBuilder: (context, index) {
-                                  final invoice = _filteredInvoices[index];
-                                  final checked = _selectedInvoiceIds.contains(invoice.id);
-                                  return GestureDetector(
-                                    onLongPress: () => _toggleInvoiceSelection(invoice.id),
-                                    child: Card(
-                                      margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-                                      child: Padding(
-                                        padding: const EdgeInsets.all(12),
-                                        child: Row(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            if (_selectionMode)
-                                              Padding(
-                                                padding: const EdgeInsets.only(right: 8, top: 4),
-                                                child: Checkbox(
-                                                  value: checked,
-                                                  onChanged: (_) => _toggleInvoiceSelection(invoice.id),
-                                                ),
-                                              ),
-                                            Expanded(
-                                              child: Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: [
-                                                  Text('Накладная №${invoice.id}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                                                  const SizedBox(height: 4),
-                                                  Text('Точка: ${invoice.outletName}'),
-                                                  if (invoice.outletAddress.isNotEmpty)
-                                                    Text('Адрес: ${invoice.outletAddress}'),
-                                                  const SizedBox(height: 12),
-                                                  if (!widget.forSales)
-                                                    Row(
-                                                      mainAxisAlignment: MainAxisAlignment.end,
-                                                      children: [
-                                                        ElevatedButton(
-                                                          child: Text('Передать на доставку'),
-                                                          onPressed: () => _showConfirmDialog(invoice),
-                                                        ),
-                                                        const SizedBox(width: 8),
-                                                        OutlinedButton(
-                                                          style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
-                                                          onPressed: () => _showDeleteDialog(invoice),
-                                                          child: Text('Отклонить'),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                ],
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
+                              title: Text('Накладная $customNumber'),
+                              subtitle: Text('Точка: ${invoice.outletName}\nАдрес: ${invoice.outletAddress}\nТорговый: ${invoice.salesRepName}'),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    '${invoice.totalAmount.toStringAsFixed(2)} ₸',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.deepPurple,
+                                      fontSize: 16,
                                     ),
-                                  );
-                                },
+                                  ),
+                                  if (_selectionMode)
+                                    Checkbox(
+                                      value: _selectedInvoiceIds.contains(invoice.id),
+                                      onChanged: (value) => _toggleInvoiceSelection(invoice.id),
+                                    ),
+                                ],
                               ),
+                              onTap: _selectionMode
+                                  ? () => _toggleInvoiceSelection(invoice.id)
+                                  : () {
+                                      // Открыть детали накладной
+                                    },
+                              onLongPress: () {
+                                if (!_selectionMode) {
+                                  setState(() {
+                                    _selectionMode = true;
+                                    _selectedInvoiceIds.add(invoice.id);
+                                  });
+                                }
+                              },
                             ),
-                          ],
-                        ),
+                          );
+                        },
+                      ),
                 ),
               ],
             ),

@@ -205,53 +205,74 @@ class _AdminDeliveryInvoicesScreenState extends State<AdminDeliveryInvoicesScree
                           itemCount: _filteredInvoices.length,
                           itemBuilder: (context, index) {
                             final invoice = _filteredInvoices[index];
-                            return Card(
-                              margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-                              child: Padding(
-                                padding: const EdgeInsets.all(12),
-                                child: Column(
+                            final date = invoice.date.toDate();
+                            final dateStr = DateFormat('dd.MM.yyyy').format(date);
+                            final dateNum = DateFormat('ddMMyyyy').format(date);
+                            String suffix = '';
+                            final idMatch = RegExp(r'(\d{4})$').firstMatch(invoice.id);
+                            if (idMatch != null) {
+                              suffix = idMatch.group(1)!;
+                            } else {
+                              suffix = (index + 1).toString().padLeft(4, '0');
+                            }
+                            final customNumber = '$dateNum-$suffix';
+                            final bgColor = index % 2 == 0 ? Colors.white : Colors.grey.shade100;
+                            return Container(
+                              color: bgColor,
+                              child: ListTile(
+                                leading: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text('${index + 1}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                                    Text(dateStr, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                  ],
+                                ),
+                                title: Text('Накладная $customNumber', style: const TextStyle(fontWeight: FontWeight.bold)),
+                                subtitle: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text('Накладная №${invoice.id}', style: TextStyle(fontWeight: FontWeight.bold)),
                                     Text('Точка: ${invoice.outletName}'),
                                     if (invoice.outletAddress != null && invoice.outletAddress.isNotEmpty)
                                       Text('Адрес: ${invoice.outletAddress}'),
                                     Text('Торговый: ${invoice.salesRepName}'),
-                                    const SizedBox(height: 12),
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.end,
-                                      children: [
-                                        if (!widget.forSales)
-                                          ElevatedButton(
-                                            child: Text('Доставлен'),
-                                            onPressed: () async {
-                                              final confirmed = await showDialog<bool>(
-                                                context: context,
-                                                builder: (context) => AlertDialog(
-                                                  title: Text('Подтвердите действие'),
-                                                  content: Text('Вы уверены, что хотите отметить накладную №${invoice.id} как доставленную?'),
-                                                  actions: [
-                                                    TextButton(
-                                                      onPressed: () => Navigator.pop(context, false),
-                                                      child: Text('Отмена'),
-                                                    ),
-                                                    ElevatedButton(
-                                                      onPressed: () => Navigator.pop(context, true),
-                                                      child: Text('Доставлен'),
-                                                    ),
-                                                  ],
-                                                ),
-                                              );
-                                              if (confirmed == true) {
-                                                await _invoiceService.updateInvoiceStatus(invoice.id, InvoiceStatus.delivered);
-                                                _loadData();
-                                              }
-                                            },
-                                          ),
-                                      ],
-                                    ),
                                   ],
                                 ),
+                                trailing: !widget.forSales
+                                    ? ElevatedButton(
+                                        child: Text('Доставлен'),
+                                        onPressed: () async {
+                                          final confirmed = await showDialog<bool>(
+                                            context: context,
+                                            builder: (context) => AlertDialog(
+                                              title: Text('Подтвердите действие'),
+                                              content: Text('Вы уверены, что хотите отметить накладную $customNumber как доставленную?'),
+                                              actions: [
+                                                TextButton(
+                                                  onPressed: () => Navigator.pop(context, false),
+                                                  child: Text('Отмена'),
+                                                ),
+                                                ElevatedButton(
+                                                  onPressed: () => Navigator.pop(context, true),
+                                                  child: Text('Доставлен'),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                          if (confirmed == true) {
+                                            await _invoiceService.updateInvoiceStatus(invoice.id, InvoiceStatus.delivered);
+                                            _loadData();
+                                          }
+                                        },
+                                      )
+                                    : null,
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => InvoiceScreen(invoiceId: invoice.id),
+                                    ),
+                                  );
+                                },
                               ),
                             );
                           },

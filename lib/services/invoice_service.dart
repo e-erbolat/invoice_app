@@ -33,6 +33,7 @@ class InvoiceService {
           'quantity': item.quantity,
           'price': item.price,
           'totalPrice': item.totalPrice,
+          'isBonus': item.isBonus,
         }).toList(),
         'totalAmount': invoice.totalAmount,
       });
@@ -74,6 +75,7 @@ class InvoiceService {
             quantity: item['quantity'],
             price: (item['price'] as num).toDouble(),
             totalPrice: (item['totalPrice'] as num).toDouble(),
+            isBonus: item['isBonus'] ?? false,
           )).toList(),
           totalAmount: (data['totalAmount'] as num).toDouble(),
         );
@@ -254,7 +256,14 @@ class InvoiceService {
         'isDebt': invoice.isDebt,
         'acceptedByAdmin': invoice.acceptedByAdmin,
         'acceptedBySuperAdmin': invoice.acceptedBySuperAdmin,
-        'items': invoice.items.map((item) => item.toMap()).toList(),
+        'items': invoice.items.map((item) => {
+          'productId': item.productId,
+          'productName': item.productName,
+          'quantity': item.quantity,
+          'price': item.price,
+          'totalPrice': item.totalPrice,
+          'isBonus': item.isBonus,
+        }).toList(),
         'totalAmount': invoice.totalAmount,
       });
     } catch (e) {
@@ -272,12 +281,14 @@ class InvoiceService {
   }
 
   // Обновить оплату, тип оплаты и комментарий по id накладной
-  Future<void> updateInvoicePayment(String invoiceId, bool isPaid, String? paymentType, String? comment) async {
+  Future<void> updateInvoicePayment(String invoiceId, bool isPaid, String? paymentType, String? comment, {double? bankAmount, double? cashAmount}) async {
     try {
       await _firestore.collection('invoices').doc(invoiceId).update({
         'isPaid': isPaid,
         'paymentType': paymentType,
         'paymentComment': comment,
+        if (bankAmount != null) 'bankAmount': bankAmount,
+        if (cashAmount != null) 'cashAmount': cashAmount,
       });
     } catch (e) {
       throw Exception('Ошибка обновления оплаты накладной: $e');
