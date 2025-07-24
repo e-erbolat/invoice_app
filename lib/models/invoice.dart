@@ -2,11 +2,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'invoice_item.dart';
 
 class InvoiceStatus {
+  static const int cancelled = 0;
   static const int review = 1;        // На рассмотрении
   static const int packing = 2;       // На сборке
   static const int delivery = 3;      // На доставке
   static const int delivered = 4;     // Доставлен
-  static const int cancelled = 5;     // Отменен
+       // Отменен
+  static const int paymentChecked = 5; // Проверка оплат
+  static const int archive = 6;        // Архив накладных
 
   static String getName(int status) {
     switch (status) {
@@ -15,6 +18,8 @@ class InvoiceStatus {
       case delivery: return 'на доставке';
       case delivered: return 'доставлен';
       case cancelled: return 'отменен';
+      case paymentChecked: return 'проверка оплат';
+      case archive: return 'архив';
       default: return 'неизвестно';
     }
   }
@@ -36,6 +41,8 @@ class Invoice {
   final bool isDebt;
   final bool acceptedByAdmin;
   final bool acceptedBySuperAdmin;
+  final double bankAmount;
+  final double cashAmount;
 
   Invoice({
     required this.id,
@@ -53,6 +60,8 @@ class Invoice {
     this.isDebt = false,
     this.acceptedByAdmin = false,
     this.acceptedBySuperAdmin = false,
+    this.bankAmount = 0.0,
+    this.cashAmount = 0.0,
   });
 
   Map<String, dynamic> toMap() => {
@@ -71,6 +80,8 @@ class Invoice {
     'isDebt': isDebt,
     'acceptedByAdmin': acceptedByAdmin,
     'acceptedBySuperAdmin': acceptedBySuperAdmin,
+    'bankAmount': bankAmount,
+    'cashAmount': cashAmount,
   };
 
   factory Invoice.fromMap(Map<String, dynamic> map) => Invoice(
@@ -89,6 +100,8 @@ class Invoice {
     isDebt: map['isDebt'] ?? false,
     acceptedByAdmin: map['acceptedByAdmin'] ?? false,
     acceptedBySuperAdmin: map['acceptedBySuperAdmin'] ?? false,
+    bankAmount: (map['bankAmount'] ?? 0.0) is num ? (map['bankAmount'] ?? 0.0).toDouble() : 0.0,
+    cashAmount: (map['cashAmount'] ?? 0.0) is num ? (map['cashAmount'] ?? 0.0).toDouble() : 0.0,
   );
 
   Invoice copyWith({
@@ -107,6 +120,8 @@ class Invoice {
     bool? isDebt,
     bool? acceptedByAdmin,
     bool? acceptedBySuperAdmin,
+    double? bankAmount,
+    double? cashAmount,
   }) => Invoice(
     id: id ?? this.id,
     salesRepId: salesRepId ?? this.salesRepId,
@@ -123,6 +138,8 @@ class Invoice {
     isDebt: isDebt ?? this.isDebt,
     acceptedByAdmin: acceptedByAdmin ?? this.acceptedByAdmin,
     acceptedBySuperAdmin: acceptedBySuperAdmin ?? this.acceptedBySuperAdmin,
+    bankAmount: bankAmount ?? this.bankAmount,
+    cashAmount: cashAmount ?? this.cashAmount,
   );
 }
 

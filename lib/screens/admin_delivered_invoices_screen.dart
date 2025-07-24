@@ -351,7 +351,14 @@ class _AdminDeliveredInvoicesScreenState extends State<AdminDeliveredInvoicesScr
                                                 bankAmount: bank,
                                                 cashAmount: cash,
                                               );
-                                              await _invoiceService.updateInvoiceStatus(inv.id, InvoiceStatus.delivered);
+                                              await _invoiceService.updateInvoice(
+                                                inv.copyWith(
+                                                  status: InvoiceStatus.paymentChecked,
+                                                  acceptedByAdmin: true,
+                                                  bankAmount: bank,
+                                                  cashAmount: cash,
+                                                ),
+                                              );
                                             }
                                             _loadData();
                                           }
@@ -562,7 +569,14 @@ class _AdminDeliveredInvoicesScreenState extends State<AdminDeliveredInvoicesScr
                                                             bankAmount: bank,
                                                             cashAmount: cash,
                                                           );
-                                                          await _invoiceService.updateInvoiceStatus(invoice.id, InvoiceStatus.delivered);
+                                                          await _invoiceService.updateInvoice(
+                                                            invoice.copyWith(
+                                                              status: InvoiceStatus.paymentChecked,
+                                                              acceptedByAdmin: true,
+                                                              bankAmount: bank,
+                                                              cashAmount: cash,
+                                                            ),
+                                                          );
                                                           _loadData();
                                                         }
                                                       : null,

@@ -568,7 +568,32 @@ class _AdminPackingInvoicesScreenState extends State<AdminPackingInvoicesScreen>
                                 ],
                               ),
                               title: Text('Накладная $customNumber'),
-                              subtitle: Text('Точка: ${invoice.outletName}\nАдрес: ${invoice.outletAddress}\nТорговый: ${invoice.salesRepName}'),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('Точка: ${invoice.outletName}'),
+                                  Text('Адрес: ${invoice.outletAddress}'),
+                                  Text('Торговый: ${invoice.salesRepName}'),
+                                  if (!_selectionMode) ...[
+                                    const SizedBox(height: 8),
+                                    Row(
+                                      children: [
+                                        ElevatedButton(
+                                          onPressed: () => _showConfirmDialog(invoice),
+                                          child: Text('Передать на доставку'),
+                                          style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple, foregroundColor: Colors.white),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        OutlinedButton(
+                                          style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
+                                          onPressed: () => _showDeleteDialog(invoice),
+                                          child: Text('Отклонить'),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ],
+                              ),
                               trailing: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [

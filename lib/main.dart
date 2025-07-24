@@ -18,6 +18,7 @@ import 'screens/admin_packing_invoices_screen.dart';
 import 'screens/admin_delivery_invoices_screen.dart';
 import 'screens/admin_delivered_invoices_screen.dart';
 import 'screens/sales_home_screen.dart';
+import 'screens/admin_payment_check_invoices_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -53,6 +54,7 @@ class MyApp extends StatelessWidget {
         '/admin_delivered_invoices': (context) => AdminDeliveredInvoicesScreen(),
         '/outlet_report': (_) => const OutletReportScreen(),
         '/sales_rep_report': (_) => const SalesRepReportScreen(),
+        '/admin_payment_check_invoices': (_) => const AdminPaymentCheckInvoicesScreen(),
       },
     );
   }
@@ -107,7 +109,7 @@ class _AuthGateState extends State<AuthGate> {
     if (_user == null) {
       return LoginScreen();
     }
-    if (_user!.role == 'admin') {
+    if (_user!.role == 'admin' || _user!.role == 'superadmin') {
       return const HomeScreen();
     } else {
       return const SalesHomeScreen();
