@@ -344,8 +344,8 @@ class _AdminDeliveredInvoicesScreenState extends State<AdminDeliveredInvoicesScr
         title: Text('Доставленные накладные'),
         actions: [
           IconButton(
-            icon: Icon(Icons.table_chart),
-            tooltip: 'Экспорт в Excel',
+            icon: Icon(kIsWeb ? Icons.table_chart : Icons.share),
+            tooltip: kIsWeb ? 'Экспорт в Excel' : 'Поделиться Excel',
             onPressed: _exportInvoicesToExcel,
           ),
           if (!kIsWeb)

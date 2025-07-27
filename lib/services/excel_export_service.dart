@@ -1,6 +1,9 @@
 import 'dart:typed_data';
+import 'dart:io';
 import 'package:excel/excel.dart';
 import 'package:file_saver/file_saver.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:intl/intl.dart';
 import '../models/invoice.dart';
 
@@ -145,13 +148,26 @@ class ExcelExportService {
     // Сохраняем файл
     final bytes = excel.save();
     if (bytes != null) {
-      await FileSaver.instance.saveFile(
-        name: fileName,
-        bytes: Uint8List.fromList(bytes),
-        ext: 'xlsx',
-        mimeType: MimeType.other,
-        customMimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      );
+      if (kIsWeb) {
+        // Для веб-версии используем FileSaver
+        await FileSaver.instance.saveFile(
+          name: fileName,
+          bytes: Uint8List.fromList(bytes),
+          ext: 'xlsx',
+          mimeType: MimeType.other,
+          customMimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        );
+      } else {
+        // Для мобильной версии используем Share
+        await Share.shareXFiles(
+          [XFile.fromData(
+            Uint8List.fromList(bytes),
+            name: '$fileName.xlsx',
+            mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          )],
+          text: 'Экспорт накладных в Excel',
+        );
+      }
     }
   }
 } 

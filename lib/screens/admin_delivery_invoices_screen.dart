@@ -151,8 +151,8 @@ class _AdminDeliveryInvoicesScreenState extends State<AdminDeliveryInvoicesScree
         title: Text('Накладные на доставке'),
         actions: [
           IconButton(
-            icon: Icon(Icons.table_chart),
-            tooltip: 'Экспорт в Excel',
+            icon: Icon(kIsWeb ? Icons.table_chart : Icons.share),
+            tooltip: kIsWeb ? 'Экспорт в Excel' : 'Поделиться Excel',
             onPressed: _exportInvoicesToExcel,
           ),
           if (!kIsWeb)

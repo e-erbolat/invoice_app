@@ -437,8 +437,8 @@ class _AdminPackingInvoicesScreenState extends State<AdminPackingInvoicesScreen>
                           Row(
                             children: [
                               ElevatedButton.icon(
-                                icon: Icon(Icons.table_chart),
-                                label: Text('Экспорт в Excel'),
+                                icon: Icon(kIsWeb ? Icons.table_chart : Icons.share),
+                                label: Text(kIsWeb ? 'Экспорт в Excel' : 'Поделиться Excel'),
                                 onPressed: _exportSelectedInvoicesToExcel,
                                 style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
                               ),
