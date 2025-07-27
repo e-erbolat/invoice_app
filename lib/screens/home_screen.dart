@@ -5,13 +5,14 @@ import 'outlet_screen.dart';
 import 'admin_delivered_invoices_screen.dart';
 import 'sales_rep_screen.dart';
 import 'warehouse_screen.dart';
-import 'package:excel/excel.dart';
+import 'package:excel/excel.dart' as excel;
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
 import '../services/firebase_service.dart';
 import '../models/product.dart';
+import '../services/cash_register_service.dart';
 
 // Если есть отдельный экран профиля, импортируйте его, иначе будет заглушка
 
@@ -26,6 +27,8 @@ class _HomeScreenState extends State<HomeScreen> {
   AppUser? _user;
   bool _loading = true;
   int _selectedIndex = 0; // Добавлено для bottom navigation
+  double _totalCashAmount = 0.0;
+  final CashRegisterService _cashRegisterService = CashRegisterService();
 
   List<Widget> get _tabBodies => [
     _InvoicesTab(user: _user),
@@ -39,6 +42,16 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadUser();
+    _loadCashAmount();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Обновляем сумму кассы при возврате на экран для админа и суперадмина
+    if (_user?.role == 'admin' || _user?.role == 'superadmin') {
+      _loadCashAmount();
+    }
   }
 
   Future<void> _loadUser() async {
@@ -49,6 +62,34 @@ class _HomeScreenState extends State<HomeScreen> {
         _loading = false;
       });
       print('[HomeScreen] Пользователь загружен: email=${user?.email}, role=${user?.role}');
+      // Загружаем сумму кассы после загрузки пользователя
+      if (user?.role == 'admin' || user?.role == 'superadmin') {
+        print('[HomeScreen] Пользователь ${user?.role}, загружаем кассу');
+        _loadCashAmount();
+      } else {
+        print('[HomeScreen] Пользователь не админ/суперадмин, касса не загружается');
+      }
+    }
+  }
+
+  Future<void> _loadCashAmount() async {
+    // Загружаем сумму кассы для админа и суперадмина
+    if (_user?.role != 'admin' && _user?.role != 'superadmin') {
+      print('[HomeScreen] Касса не загружается: роль пользователя = ${_user?.role}');
+      return;
+    }
+    
+    print('[HomeScreen] Загружаем кассу для ${_user?.role}');
+    try {
+      final amount = await _cashRegisterService.getTotalCashAmount();
+      if (mounted) {
+        setState(() {
+          _totalCashAmount = amount;
+        });
+        print('[HomeScreen] Касса загружена: ${_totalCashAmount.toStringAsFixed(2)} ₸');
+      }
+    } catch (e) {
+      print('[HomeScreen] Ошибка при загрузке суммы кассы: $e');
     }
   }
 
@@ -62,6 +103,10 @@ class _HomeScreenState extends State<HomeScreen> {
         {'emoji': '✅', 'label': 'Доставлен', 'route': '/admin_delivered_invoices'},
         {'emoji': '✔️', 'label': 'Проверка оплат', 'route': '/admin_payment_check_invoices'},
         {'emoji': '📦', 'label': 'Архив накладных', 'route': '/invoice_list'},
+        if (_user?.role == 'admin' || _user?.role == 'superadmin')
+          {'emoji': '💰', 'label': 'Касса', 'route': '/cash_register'},
+        if (_user?.role == 'admin' || _user?.role == 'superadmin')
+          {'emoji': '💸', 'label': 'Расходы', 'route': '/cash_expenses'},
       ]
     ];
     return Column(
@@ -83,7 +128,12 @@ class _HomeScreenState extends State<HomeScreen> {
                       title: Text(s['label'] as String, style: const TextStyle(fontWeight: FontWeight.w500)),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () {
-                        Navigator.pushNamed(context, s['route'] as String);
+                        Navigator.pushNamed(context, s['route'] as String).then((_) {
+                          // Обновляем кассу после возврата с экрана кассы
+                          if (s['route'] == '/cash_register' && (_user?.role == 'admin' || _user?.role == 'superadmin')) {
+                            _loadCashAmount();
+                          }
+                        });
                       },
                     ),
                   );
@@ -113,6 +163,8 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     print('[HomeScreen] build: _user.email=${_user?.email}, _user.role=${_user?.role}');
+    print('[HomeScreen] build: _totalCashAmount=${_totalCashAmount.toStringAsFixed(2)} ₸');
+    print('[HomeScreen] build: показывать кассу = ${_user?.role == 'admin' || _user?.role == 'superadmin'}');
     if (_loading) {
       return Scaffold(
         appBar: AppBar(title: const Text("Мои накладные")),
@@ -159,6 +211,30 @@ class _HomeScreenState extends State<HomeScreen> {
         centerTitle: false,
         iconTheme: const IconThemeData(color: Colors.black),
         actions: [
+          if (_user?.role == 'admin' || _user?.role == 'superadmin')
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.green),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.account_balance_wallet, color: Colors.green, size: 16),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Касса: ${_totalCashAmount.toStringAsFixed(2)} ₸',
+                    style: TextStyle(
+                      color: Colors.green,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.black),
             onPressed: () async {
@@ -180,6 +256,10 @@ class _HomeScreenState extends State<HomeScreen> {
           setState(() {
             _selectedIndex = index;
           });
+          // Обновляем кассу при переключении на вкладку накладных для админа и суперадмина
+          if (index == 0 && (_user?.role == 'admin' || _user?.role == 'superadmin')) {
+            _loadCashAmount();
+          }
         },
         type: BottomNavigationBarType.fixed,
         items: const [

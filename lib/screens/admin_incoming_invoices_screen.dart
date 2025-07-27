@@ -9,6 +9,11 @@ import '../services/auth_service.dart';
 import 'invoice_create_screen.dart';
 import 'package:share_plus/share_plus.dart';
 import '../models/outlet.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:excel/excel.dart' as excel;
+import 'package:excel/excel.dart' show MimeType;
+import 'package:file_saver/file_saver.dart';
+import 'dart:typed_data';
 
 class AdminIncomingInvoicesScreen extends StatefulWidget {
   final bool forSales;
@@ -165,253 +170,629 @@ class _AdminIncomingInvoicesScreenState extends State<AdminIncomingInvoicesScree
     }
   }
 
+  void _exportInvoicesToExcel() async {
+    if (_filteredInvoices.isEmpty) return;
+    final excelDoc = excel.Excel.createExcel();
+    final sheet = excelDoc['Входящие накладные'];
+    int currentRow = 0;
+    // Заголовки
+    final headers = [
+      '№', 'Дата', 'Номер', 'Точка', 'Адрес', 'Торговый', 'Сумма', 'Статус', 'Оплата'
+    ];
+    for (int col = 0; col < headers.length; col++) {
+      sheet.cell(excel.CellIndex.indexByColumnRow(columnIndex: col, rowIndex: currentRow)).value = headers[col];
+    }
+    currentRow++;
+    for (int i = 0; i < _filteredInvoices.length; i++) {
+      final inv = _filteredInvoices[i];
+      final date = inv.date.toDate();
+      final dateStr = DateFormat('dd.MM.yyyy').format(date);
+      final dateNum = DateFormat('ddMMyyyy').format(date);
+      String suffix = '';
+      final idMatch = RegExp(r'(\d{4})$').firstMatch(inv.id);
+      if (idMatch != null) {
+        suffix = idMatch.group(1)!;
+      } else {
+        suffix = (i + 1).toString().padLeft(4, '0');
+      }
+      final customNumber = '$dateNum-$suffix';
+      final status = InvoiceStatus.getName(inv.status);
+      final payment = inv.isPaid
+          ? 'Оплачен (${inv.paymentType ?? ''})'
+          : inv.isDebt
+              ? 'Долг'
+              : 'Не оплачен';
+      final row = [
+        i + 1,
+        dateStr,
+        customNumber,
+        inv.outletName,
+        inv.outletAddress,
+        inv.salesRepName,
+        inv.totalAmount,
+        status,
+        payment,
+      ];
+      for (int col = 0; col < row.length; col++) {
+        sheet.cell(excel.CellIndex.indexByColumnRow(columnIndex: col, rowIndex: currentRow)).value = row[col];
+      }
+      currentRow++;
+    }
+    final bytes = excelDoc.save();
+    if (bytes != null) {
+      await FileSaver.instance.saveFile(
+        name: 'incoming_invoices',
+        bytes: Uint8List.fromList(bytes),
+        ext: 'xlsx',
+        mimeType: MimeType.other,
+        customMimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Входящие накладные'), actions: [
-        IconButton(icon: Icon(Icons.clear), onPressed: _clearFilters)
-      ]),
+      appBar: AppBar(
+        title: Text('Входящие накладные'),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.table_chart),
+            tooltip: 'Экспорт в Excel',
+            onPressed: _exportInvoicesToExcel,
+          ),
+          if (!kIsWeb)
+            IconButton(
+              icon: Icon(Icons.filter_list),
+              tooltip: 'Фильтры',
+              onPressed: () async {
+                await showDialog(
+                  context: context,
+                  builder: (context) => _FilterDialog(
+                    salesReps: _salesReps,
+                    selectedSalesRepId: _selectedSalesRepId,
+                    onSalesRepChanged: (val) => setState(() => _selectedSalesRepId = val),
+                    selectedPaymentStatus: _selectedPaymentStatus,
+                    onPaymentStatusChanged: (val) => setState(() => _selectedPaymentStatus = val),
+                    dateFrom: _dateFrom,
+                    dateTo: _dateTo,
+                    onDateFromChanged: (val) => setState(() => _dateFrom = val),
+                    onDateToChanged: (val) => setState(() => _dateTo = val),
+                    onToday: () {
+                      final now = DateTime.now();
+                      final today = DateTime(now.year, now.month, now.day);
+                      setState(() {
+                        _dateFrom = today;
+                        _dateTo = today;
+                      });
+                    },
+                    onTomorrow: () {
+                      final now = DateTime.now().add(Duration(days: 1));
+                      final tomorrow = DateTime(now.year, now.month, now.day);
+                      setState(() {
+                        _dateFrom = tomorrow;
+                        _dateTo = tomorrow;
+                      });
+                    },
+                    onClear: _clearFilters,
+                    onApply: () {
+                      _filterInvoices();
+                      Navigator.pop(context);
+                    },
+                  ),
+                );
+                _filterInvoices();
+              },
+            ),
+          IconButton(icon: Icon(Icons.clear), onPressed: _clearFilters)
+        ],
+      ),
       body: _isLoading
           ? Center(child: CircularProgressIndicator())
           : _errorMessage != null
               ? Center(child: Text('Ошибка: \n$_errorMessage'))
               : Column(
               children: [
-                Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            DropdownButton<String>(
-                              value: _selectedSalesRepId,
-                              hint: Text('Торговый'),
-                              items: [
-                                DropdownMenuItem(value: 'all', child: Text('Все')),
-                                ..._salesReps.map((rep) => DropdownMenuItem(value: rep.id, child: Text(rep.name)))
-                              ],
-                              onChanged: (val) {
-                                setState(() { _selectedSalesRepId = val; });
-                                _filterInvoices();
-                              },
-                            ),
-                            DropdownButton<String>(
-                              value: _selectedPaymentStatus,
-                              hint: Text('Оплата'),
-                              items: [
-                                DropdownMenuItem(value: 'all', child: Text('Все')),
-                                DropdownMenuItem(value: 'paid', child: Text('Оплачен')),
-                                DropdownMenuItem(value: 'not_paid', child: Text('Не оплачен')),
-                                DropdownMenuItem(value: 'debt', child: Text('Долг')),
-                              ],
-                              onChanged: (val) {
-                                setState(() { _selectedPaymentStatus = val; });
-                                _filterInvoices();
-                              },
-                            ),
-                            OutlinedButton(
-                              onPressed: () => _selectDate(context, true),
-                              child: Text(_dateFrom == null ? 'С даты' : DateFormat('dd.MM.yyyy').format(_dateFrom!)),
-                            ),
-                            OutlinedButton(
-                              onPressed: () => _selectDate(context, false),
-                              child: Text(_dateTo == null ? 'По дату' : DateFormat('dd.MM.yyyy').format(_dateTo!)),
-                            ),
-                            OutlinedButton(
-                              onPressed: () {
-                                final now = DateTime.now();
-                                final today = DateTime(now.year, now.month, now.day);
-                                setState(() {
-                                  _dateFrom = today;
-                                  _dateTo = today;
-                                });
-                                _filterInvoices();
-                              },
-                              child: Text('Сегодня'),
-                            ),
-                            OutlinedButton(
-                              onPressed: () {
-                                final now = DateTime.now().add(Duration(days: 1));
-                                final tomorrow = DateTime(now.year, now.month, now.day);
-                                setState(() {
-                                  _dateFrom = tomorrow;
-                                  _dateTo = tomorrow;
-                                });
-                                _filterInvoices();
-                              },
-                              child: Text('Завтра'),
-                            ),
-                            OutlinedButton(
-                              onPressed: _clearFilters,
-                              child: Text('Сбросить фильтры'),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Builder(
-                        builder: (context) {
-                          final total = _filteredInvoices.fold<double>(0.0, (sum, inv) => sum + inv.totalAmount);
-                          return Text(
-                            'Общая сумма: ${total.toStringAsFixed(2)} ₸',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.deepPurple,
-                              fontSize: 16,
-                            ),
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: _filteredInvoices.isEmpty
-                      ? Center(child: Text('Нет входящих накладных'))
-                      : ListView.builder(
-                          itemCount: _filteredInvoices.length,
-                          itemBuilder: (context, index) {
-                            final invoice = _filteredInvoices[index];
-                            final date = invoice.date.toDate();
-                            final dateStr = DateFormat('dd.MM.yyyy').format(date);
-                            final dateNum = DateFormat('ddMMyyyy').format(date);
-                            // Извлекаем 4 последних цифры из id, если они есть, иначе просто индекс+1
-                            String suffix = '';
-                            final idMatch = RegExp(r'(\d{4})$').firstMatch(invoice.id);
-                            if (idMatch != null) {
-                              suffix = idMatch.group(1)!;
-                            } else {
-                              suffix = (index + 1).toString().padLeft(4, '0');
-                            }
-                            final customNumber = '$dateNum-$suffix';
-                            final bgColor = index % 2 == 0 ? Colors.white : Colors.grey.shade100;
-                            return Container(
-                              color: bgColor,
-                              child: ListTile(
-                                leading: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Text('${index + 1}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                                    Text(dateStr, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                                  ],
-                                ),
-                                title: Text('Накладная $customNumber'),
-                                subtitle: Text('Точка: ${invoice.outletName}\nАдрес: ${invoice.outletAddress}\nТорговый: ${invoice.salesRepName}'),
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      '${invoice.totalAmount.toStringAsFixed(2)} ₸',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.deepPurple,
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                    if (invoice.status == InvoiceStatus.review)
-                                      ...[
-                                        IconButton(
-                                          icon: Icon(Icons.edit, color: Colors.deepPurple),
-                                          tooltip: 'Редактировать',
-                                          onPressed: () {
-                                            Navigator.push(
-                                              context,
-                                              MaterialPageRoute(
-                                                builder: (context) => InvoiceCreateScreen(invoiceToEdit: invoice),
-                                              ),
-                                            ).then((_) => _loadData());
-                                          },
-                                        ),
-                                        if (!widget.forSales)
-                                          IconButton(
-                                            icon: Icon(Icons.check_circle, color: Colors.green),
-                                            tooltip: 'Принять',
-                                            onPressed: () async {
-                                              await _invoiceService.updateInvoiceStatus(invoice.id, InvoiceStatus.packing);
-                                              _loadData();
-                                            },
-                                          ),
-                                        IconButton(
-                                          icon: Icon(Icons.delete, color: Colors.red),
-                                          tooltip: 'Отклонить',
-                                          onPressed: () async {
-                                            final confirm = await showDialog<bool>(
-                                              context: context,
-                                              builder: (context) => AlertDialog(
-                                                title: Text('Отклонить накладную?'),
-                                                content: Text('Вы уверены, что хотите отклонить (удалить) накладную?'),
-                                                actions: [
-                                                  TextButton(onPressed: () => Navigator.pop(context, false), child: Text('Отмена')),
-                                                  ElevatedButton(onPressed: () => Navigator.pop(context, true), child: Text('Отклонить')),
-                                                ],
-                                              ),
-                                            );
-                                            if (confirm == true) {
-                                              await _invoiceService.deleteInvoice(invoice.id);
-                                              _loadData();
-                                            }
-                                          },
-                                        ),
-                                        if (widget.forSales)
-                                          IconButton(
-                                            icon: Icon(Icons.share, color: Colors.blue),
-                                            tooltip: 'Поделиться',
-                                            onPressed: () {
-                                              final outlet = _outlets.firstWhere(
-                                                (o) => o.id == invoice.outletId,
-                                                orElse: () => Outlet(
-                                                  id: '',
-                                                  name: invoice.outletName,
-                                                  address: invoice.outletAddress,
-                                                  phone: '',
-                                                  contactPerson: '',
-                                                  region: '',
-                                                  createdAt: DateTime.now(),
-                                                  updatedAt: DateTime.now(),
-                                                ),
-                                              );
-                                              final buffer = StringBuffer();
-                                              buffer.writeln('${outlet.name}');
-                                              buffer.writeln('Адрес: ${outlet.address}');
-                                              if (outlet.contactPerson.isNotEmpty || outlet.phone.isNotEmpty) {
-                                                buffer.writeln('${outlet.contactPerson} ${outlet.phone}'.trim());
-                                              }
-                                              for (final item in invoice.items.where((i) => !i.isBonus)) {
-                                                buffer.writeln('${item.productName} - ${item.quantity} шт х ${item.price.toStringAsFixed(0)} тг');
-                                              }
-                                            
-                                              final bonusItems = invoice.items.where((i) => i.isBonus).toList();
-                                              if (bonusItems.isNotEmpty) {
-                                                buffer.writeln('\nБонус:');
-                                                for (final item in bonusItems) {
-                                                  buffer.writeln('${item.productName} - ${item.quantity} шт');
-                                                }
-                                              }
-                                              buffer.writeln('Итого: ${invoice.totalAmount.toStringAsFixed(0)} тг');
-                                              Share.share(buffer.toString());
-                                            },
-                                          ),
-                                      ],
-                                  ],
-                                ),
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => InvoiceScreen(invoiceId: invoice.id),
-                                    ),
-                                  );
+                if (kIsWeb)
+                  Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              DropdownButton<String>(
+                                value: _selectedSalesRepId,
+                                hint: Text('Торговый'),
+                                items: [
+                                  DropdownMenuItem(value: 'all', child: Text('Все')),
+                                  ..._salesReps.map((rep) => DropdownMenuItem(value: rep.id, child: Text(rep.name)))
+                                ],
+                                onChanged: (val) {
+                                  setState(() { _selectedSalesRepId = val; });
+                                  _filterInvoices();
                                 },
+                              ),
+                              DropdownButton<String>(
+                                value: _selectedPaymentStatus,
+                                hint: Text('Оплата'),
+                                items: [
+                                  DropdownMenuItem(value: 'all', child: Text('Все')),
+                                  DropdownMenuItem(value: 'paid', child: Text('Оплачен')),
+                                  DropdownMenuItem(value: 'not_paid', child: Text('Не оплачен')),
+                                  DropdownMenuItem(value: 'debt', child: Text('Долг')),
+                                ],
+                                onChanged: (val) {
+                                  setState(() { _selectedPaymentStatus = val; });
+                                  _filterInvoices();
+                                },
+                              ),
+                              OutlinedButton(
+                                onPressed: () => _selectDate(context, true),
+                                child: Text(_dateFrom == null ? 'С даты' : DateFormat('dd.MM.yyyy').format(_dateFrom!)),
+                              ),
+                              OutlinedButton(
+                                onPressed: () => _selectDate(context, false),
+                                child: Text(_dateTo == null ? 'По дату' : DateFormat('dd.MM.yyyy').format(_dateTo!)),
+                              ),
+                              OutlinedButton(
+                                onPressed: () {
+                                  final now = DateTime.now();
+                                  final today = DateTime(now.year, now.month, now.day);
+                                  setState(() {
+                                    _dateFrom = today;
+                                    _dateTo = today;
+                                  });
+                                  _filterInvoices();
+                                },
+                                child: Text('Сегодня'),
+                              ),
+                              OutlinedButton(
+                                onPressed: () {
+                                  final now = DateTime.now().add(Duration(days: 1));
+                                  final tomorrow = DateTime(now.year, now.month, now.day);
+                                  setState(() {
+                                    _dateFrom = tomorrow;
+                                    _dateTo = tomorrow;
+                                  });
+                                  _filterInvoices();
+                                },
+                                child: Text('Завтра'),
+                              ),
+                              OutlinedButton(
+                                onPressed: _clearFilters,
+                                child: Text('Сбросить фильтры'),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Builder(
+                          builder: (context) {
+                            final total = _filteredInvoices.fold<double>(0.0, (sum, inv) => sum + inv.totalAmount);
+                            return Text(
+                              'Общая сумма: ${total.toStringAsFixed(2)} ₸',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.deepPurple,
+                                fontSize: 16,
                               ),
                             );
                           },
                         ),
-                ),
+                      ],
+                    ),
+                  ),
+                Expanded(
+                  child: _filteredInvoices.isEmpty
+                      ? Center(child: Text('Нет входящих накладных'))
+                                              : ListView.builder(
+                            itemCount: _filteredInvoices.length,
+                            itemBuilder: (context, index) {
+                              final invoice = _filteredInvoices[index];
+                              
+                              // Добавляем общую сумму в начале для мобильных
+                              if (index == 0 && !kIsWeb) {
+                                final totalSum = _filteredInvoices.fold<double>(
+                                  0.0, (sum, inv) => sum + inv.totalAmount
+                                );
+                                return Column(
+                                  children: [
+                                    Container(
+                                      margin: EdgeInsets.all(16),
+                                      padding: EdgeInsets.all(16),
+                                      decoration: BoxDecoration(
+                                        color: Colors.deepPurple.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(color: Colors.deepPurple),
+                                      ),
+                                      child: Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text(
+                                            'Общая сумма:',
+                                            style: TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.deepPurple,
+                                            ),
+                                          ),
+                                          Text(
+                                            '${totalSum.toStringAsFixed(2)} ₸',
+                                            style: TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.deepPurple,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    _buildInvoiceItem(invoice, index),
+                                  ],
+                                );
+                              }
+                              
+                              return _buildInvoiceItem(invoice, index);
+                            },
+                          ),
+                        ),
               ],
             ),
+    );
+  }
+  
+  Widget _buildInvoiceItem(Invoice invoice, int index) {
+    final date = invoice.date.toDate();
+    final dateStr = DateFormat('dd.MM.yyyy').format(date);
+    final dateNum = DateFormat('ddMMyyyy').format(date);
+    // Извлекаем 4 последних цифры из id, если они есть, иначе просто индекс+1
+    String suffix = '';
+    final idMatch = RegExp(r'(\d{4})$').firstMatch(invoice.id);
+    if (idMatch != null) {
+      suffix = idMatch.group(1)!;
+    } else {
+      suffix = (index + 1).toString().padLeft(4, '0');
+    }
+    final customNumber = '$dateNum-$suffix';
+    final bgColor = index % 2 == 0 ? Colors.white : Colors.grey.shade100;
+    return Container(
+      color: bgColor,
+      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 16),
+      child: Column(
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // Номер и дата
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text('${index + 1}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                    Text(dateStr, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Основная информация
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Накладная $customNumber', maxLines: 1, overflow: TextOverflow.ellipsis),
+                    Text('Точка: ${invoice.outletName}', maxLines: 1, overflow: TextOverflow.ellipsis),
+                    Text('Адрес: ${invoice.outletAddress}', maxLines: 1, overflow: TextOverflow.ellipsis),
+                    Text('Торговый: ${invoice.salesRepName}', maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Сумма и кнопки для веб-версии
+              Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    '${invoice.totalAmount.toStringAsFixed(2)} ₸',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.deepPurple,
+                      fontSize: 16,
+                    ),
+                  ),
+                  // Кнопки для веб-версии
+                  if (kIsWeb && invoice.status == InvoiceStatus.review) ...[
+                    SizedBox(height: 8),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                                                 IconButton(
+                           icon: Icon(Icons.edit, color: Colors.deepPurple),
+                          tooltip: 'Редактировать',
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => InvoiceCreateScreen(invoiceToEdit: invoice),
+                              ),
+                            ).then((_) => _loadData());
+                          },
+                        ),
+                        if (!widget.forSales)
+                                                     IconButton(
+                             icon: Icon(Icons.check_circle, color: Colors.green),
+                            tooltip: 'Принять',
+                            onPressed: () async {
+                              await _invoiceService.updateInvoiceStatus(invoice.id, InvoiceStatus.packing);
+                              _loadData();
+                            },
+                          ),
+                                                 IconButton(
+                           icon: Icon(Icons.delete, color: Colors.red),
+                          tooltip: 'Отклонить',
+                          onPressed: () async {
+                            final confirm = await showDialog<bool>(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                title: Text('Отклонить накладную?'),
+                                content: Text('Вы уверены, что хотите отклонить (удалить) накладную?'),
+                                actions: [
+                                  TextButton(onPressed: () => Navigator.pop(context, false), child: Text('Отмена')),
+                                  ElevatedButton(onPressed: () => Navigator.pop(context, true), child: Text('Отклонить')),
+                                ],
+                              ),
+                            );
+                            if (confirm == true) {
+                              await _invoiceService.deleteInvoice(invoice.id);
+                              _loadData();
+                            }
+                          },
+                        ),
+                        if (widget.forSales)
+                                                     IconButton(
+                             icon: Icon(Icons.share, color: Colors.blue),
+                            tooltip: 'Поделиться',
+                            onPressed: () {
+                              final outlet = _outlets.firstWhere(
+                                (o) => o.id == invoice.outletId,
+                                orElse: () => Outlet(
+                                  id: '',
+                                  name: invoice.outletName,
+                                  address: invoice.outletAddress,
+                                  phone: '',
+                                  contactPerson: '',
+                                  region: '',
+                                  createdAt: DateTime.now(),
+                                  updatedAt: DateTime.now(),
+                                ),
+                              );
+                              final buffer = StringBuffer();
+                              buffer.writeln('${outlet.name}');
+                              buffer.writeln('Адрес: ${outlet.address}');
+                              if (outlet.contactPerson.isNotEmpty || outlet.phone.isNotEmpty) {
+                                buffer.writeln('${outlet.contactPerson} ${outlet.phone}'.trim());
+                              }
+                              for (final item in invoice.items.where((i) => !i.isBonus)) {
+                                buffer.writeln('${item.productName} - ${item.quantity} шт х ${item.price.toStringAsFixed(0)} тг');
+                              }
+                              final bonusItems = invoice.items.where((i) => i.isBonus).toList();
+                              if (bonusItems.isNotEmpty) {
+                                buffer.writeln('\nБонус:');
+                                for (final item in bonusItems) {
+                                  buffer.writeln('${item.productName} - ${item.quantity} шт');
+                                }
+                              }
+                              buffer.writeln('Итого: ${invoice.totalAmount.toStringAsFixed(0)} тг');
+                              Share.share(buffer.toString());
+                            },
+                          ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          ),
+          // Кнопки внизу для мобильных устройств
+          if (!kIsWeb && invoice.status == InvoiceStatus.review) ...[
+            SizedBox(height: 16),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconButton(
+                    icon: Icon(Icons.edit, color: Colors.deepPurple),
+                    tooltip: 'Редактировать',
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => InvoiceCreateScreen(invoiceToEdit: invoice),
+                        ),
+                      ).then((_) => _loadData());
+                    },
+                  ),
+                  if (!widget.forSales) ...[
+                    SizedBox(width: 16),
+                    IconButton(
+                      icon: Icon(Icons.check_circle, color: Colors.green),
+                      tooltip: 'Принять',
+                      onPressed: () async {
+                        await _invoiceService.updateInvoiceStatus(invoice.id, InvoiceStatus.packing);
+                        _loadData();
+                      },
+                    ),
+                  ],
+                  SizedBox(width: 16),
+                  IconButton(
+                    icon: Icon(Icons.delete, color: Colors.red),
+                    tooltip: 'Отклонить',
+                    onPressed: () async {
+                      final confirm = await showDialog<bool>(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: Text('Отклонить накладную?'),
+                          content: Text('Вы уверены, что хотите отклонить (удалить) накладную?'),
+                          actions: [
+                            TextButton(onPressed: () => Navigator.pop(context, false), child: Text('Отмена')),
+                            ElevatedButton(onPressed: () => Navigator.pop(context, true), child: Text('Отклонить')),
+                          ],
+                        ),
+                      );
+                      if (confirm == true) {
+                        await _invoiceService.deleteInvoice(invoice.id);
+                        _loadData();
+                      }
+                    },
+                  ),
+                  if (widget.forSales) ...[
+                    SizedBox(width: 16),
+                    IconButton(
+                      icon: Icon(Icons.share, color: Colors.blue),
+                      tooltip: 'Поделиться',
+                      onPressed: () {
+                        final outlet = _outlets.firstWhere(
+                          (o) => o.id == invoice.outletId,
+                          orElse: () => Outlet(
+                            id: '',
+                            name: invoice.outletName,
+                            address: invoice.outletAddress,
+                            phone: '',
+                            contactPerson: '',
+                            region: '',
+                            createdAt: DateTime.now(),
+                            updatedAt: DateTime.now(),
+                          ),
+                        );
+                        final buffer = StringBuffer();
+                        buffer.writeln('${outlet.name}');
+                        buffer.writeln('Адрес: ${outlet.address}');
+                        if (outlet.contactPerson.isNotEmpty || outlet.phone.isNotEmpty) {
+                          buffer.writeln('${outlet.contactPerson} ${outlet.phone}'.trim());
+                        }
+                        for (final item in invoice.items.where((i) => !i.isBonus)) {
+                          buffer.writeln('${item.productName} - ${item.quantity} шт х ${item.price.toStringAsFixed(0)} тг');
+                        }
+                        final bonusItems = invoice.items.where((i) => i.isBonus).toList();
+                        if (bonusItems.isNotEmpty) {
+                          buffer.writeln('\nБонус:');
+                          for (final item in bonusItems) {
+                            buffer.writeln('${item.productName} - ${item.quantity} шт');
+                          }
+                        }
+                        buffer.writeln('Итого: ${invoice.totalAmount.toStringAsFixed(0)} тг');
+                        Share.share(buffer.toString());
+                      },
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// Вспомогательный диалог фильтров
+class _FilterDialog extends StatelessWidget {
+  final List<SalesRep> salesReps;
+  final String? selectedSalesRepId;
+  final ValueChanged<String?> onSalesRepChanged;
+  final String? selectedPaymentStatus;
+  final ValueChanged<String?> onPaymentStatusChanged;
+  final DateTime? dateFrom;
+  final DateTime? dateTo;
+  final ValueChanged<DateTime?> onDateFromChanged;
+  final ValueChanged<DateTime?> onDateToChanged;
+  final VoidCallback onToday;
+  final VoidCallback onTomorrow;
+  final VoidCallback onClear;
+  final VoidCallback onApply;
+  const _FilterDialog({
+    required this.salesReps,
+    required this.selectedSalesRepId,
+    required this.onSalesRepChanged,
+    required this.selectedPaymentStatus,
+    required this.onPaymentStatusChanged,
+    required this.dateFrom,
+    required this.dateTo,
+    required this.onDateFromChanged,
+    required this.onDateToChanged,
+    required this.onToday,
+    required this.onTomorrow,
+    required this.onClear,
+    required this.onApply,
+  });
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Фильтры'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            DropdownButton<String>(
+              value: selectedSalesRepId,
+              hint: Text('Торговый'),
+              items: [
+                DropdownMenuItem(value: 'all', child: Text('Все')),
+                ...salesReps.map((rep) => DropdownMenuItem(value: rep.id, child: Text(rep.name)))
+              ],
+              onChanged: onSalesRepChanged,
+            ),
+            DropdownButton<String>(
+              value: selectedPaymentStatus,
+              hint: Text('Оплата'),
+              items: [
+                DropdownMenuItem(value: 'all', child: Text('Все')),
+                DropdownMenuItem(value: 'paid', child: Text('Оплачен')),
+                DropdownMenuItem(value: 'not_paid', child: Text('Не оплачен')),
+                DropdownMenuItem(value: 'debt', child: Text('Долг')),
+              ],
+              onChanged: onPaymentStatusChanged,
+            ),
+            OutlinedButton(
+              onPressed: () async {
+                final picked = await showDatePicker(
+                  context: context,
+                  initialDate: dateFrom ?? DateTime.now(),
+                  firstDate: DateTime(2022),
+                  lastDate: DateTime(2100),
+                );
+                if (picked != null) onDateFromChanged(picked);
+              },
+              child: Text(dateFrom == null ? 'С даты' : DateFormat('dd.MM.yyyy').format(dateFrom!)),
+            ),
+            OutlinedButton(
+              onPressed: () async {
+                final picked = await showDatePicker(
+                  context: context,
+                  initialDate: dateTo ?? DateTime.now(),
+                  firstDate: DateTime(2022),
+                  lastDate: DateTime(2100),
+                );
+                if (picked != null) onDateToChanged(picked);
+              },
+              child: Text(dateTo == null ? 'По дату' : DateFormat('dd.MM.yyyy').format(dateTo!)),
+            ),
+            OutlinedButton(onPressed: onToday, child: Text('Сегодня')),
+            OutlinedButton(onPressed: onTomorrow, child: Text('Завтра')),
+            OutlinedButton(onPressed: onClear, child: Text('Сбросить фильтры')),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: Text('Отмена')),
+        ElevatedButton(onPressed: onApply, child: Text('Применить')),
+      ],
     );
   }
 } 

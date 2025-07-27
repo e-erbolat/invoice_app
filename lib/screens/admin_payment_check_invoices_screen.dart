@@ -3,6 +3,8 @@ import '../models/invoice.dart';
 import '../services/invoice_service.dart';
 import '../services/auth_service.dart';
 import '../models/app_user.dart';
+import '../services/cash_register_service.dart';
+import '../models/cash_register.dart';
 
 class AdminPaymentCheckInvoicesScreen extends StatefulWidget {
   const AdminPaymentCheckInvoicesScreen({Key? key}) : super(key: key);
@@ -12,6 +14,7 @@ class AdminPaymentCheckInvoicesScreen extends StatefulWidget {
 
 class _AdminPaymentCheckInvoicesScreenState extends State<AdminPaymentCheckInvoicesScreen> {
   final InvoiceService _invoiceService = InvoiceService();
+  final CashRegisterService _cashRegisterService = CashRegisterService();
   AppUser? _currentUser;
   List<Invoice> _invoices = [];
   bool _isLoading = true;
@@ -35,11 +38,35 @@ class _AdminPaymentCheckInvoicesScreenState extends State<AdminPaymentCheckInvoi
 
   Future<void> _confirmInvoice(Invoice invoice) async {
     setState(() { _isLoading = true; });
-    await _invoiceService.updateInvoice(invoice.copyWith(
-      status: InvoiceStatus.archive,
-      acceptedBySuperAdmin: true,
-    ));
-    await _loadUserAndData();
+    
+    try {
+      // Обновляем статус накладной
+      await _invoiceService.updateInvoice(invoice.copyWith(
+        status: InvoiceStatus.archive,
+        acceptedBySuperAdmin: true,
+      ));
+      
+      // Если есть наличные деньги, записываем их в кассу
+      final cashAmount = invoice.cashAmount;
+      if (cashAmount > 0) {
+        final cashRecord = CashRegister(
+          id: _cashRegisterService.generateRecordId(),
+          date: DateTime.now(),
+          amount: cashAmount,
+          description: 'Поступление от накладной ${invoice.id}',
+          invoiceId: invoice.id,
+        );
+        await _cashRegisterService.addCashRecord(cashRecord);
+      }
+      
+      await _loadUserAndData();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка при подтверждении накладной: $e')),
+      );
+    } finally {
+      setState(() { _isLoading = false; });
+    }
   }
 
   @override

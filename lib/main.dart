@@ -19,6 +19,9 @@ import 'screens/admin_delivery_invoices_screen.dart';
 import 'screens/admin_delivered_invoices_screen.dart';
 import 'screens/sales_home_screen.dart';
 import 'screens/admin_payment_check_invoices_screen.dart';
+import 'screens/cash_register_screen.dart';
+import 'screens/cash_expense_create_screen.dart';
+import 'screens/cash_expenses_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -55,6 +58,9 @@ class MyApp extends StatelessWidget {
         '/outlet_report': (_) => const OutletReportScreen(),
         '/sales_rep_report': (_) => const SalesRepReportScreen(),
         '/admin_payment_check_invoices': (_) => const AdminPaymentCheckInvoicesScreen(),
+        '/cash_register': (_) => const CashRegisterScreen(),
+        '/cash_expense_create': (_) => const CashExpenseCreateScreen(),
+        '/cash_expenses': (_) => const CashExpensesScreen(),
       },
     );
   }

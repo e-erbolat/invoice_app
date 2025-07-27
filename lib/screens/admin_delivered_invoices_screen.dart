@@ -6,6 +6,13 @@ import '../services/firebase_service.dart';
 import 'invoice_screen.dart';
 import 'package:intl/intl.dart';
 import '../services/auth_service.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:excel/excel.dart' as excel;
+import 'package:excel/excel.dart' show MimeType;
+import 'package:file_saver/file_saver.dart';
+import 'dart:typed_data';
+import 'package:share_plus/share_plus.dart';
+import 'invoice_create_screen.dart';
 
 class AdminDeliveredInvoicesScreen extends StatefulWidget {
   final bool forSales;
@@ -32,11 +39,25 @@ class _AdminDeliveredInvoicesScreenState extends State<AdminDeliveredInvoicesScr
   final Map<String, double> _cashAmounts = {};
   final Map<String, bool> _isPaidMap = {};
   final Set<String> _selectedInvoiceIds = {};
+  // Контроллеры для полей ввода
+  final Map<String, TextEditingController> _bankControllers = {};
+  final Map<String, TextEditingController> _cashControllers = {};
+  // Сохраненные значения для отмены изменений
+  final Map<String, double> _originalBankAmounts = {};
+  final Map<String, double> _originalCashAmounts = {};
 
   @override
   void initState() {
     super.initState();
     _loadData();
+  }
+
+  @override
+  void dispose() {
+    // Очищаем все контроллеры
+    _bankControllers.values.forEach((controller) => controller.dispose());
+    _cashControllers.values.forEach((controller) => controller.dispose());
+    super.dispose();
   }
 
   Future<void> _loadData() async {
@@ -128,6 +149,81 @@ class _AdminDeliveredInvoicesScreenState extends State<AdminDeliveredInvoicesScr
       _dateTo = null;
       _filteredInvoices = _invoices;
     });
+  }
+
+  // Инициализация контроллеров для накладной
+  void _initializeControllers(String invoiceId, double totalAmount) {
+    if (!_bankControllers.containsKey(invoiceId)) {
+      final bankAmount = _bankAmounts[invoiceId] ?? totalAmount;
+      final cashAmount = _cashAmounts[invoiceId] ?? 0.0;
+      
+      _bankControllers[invoiceId] = TextEditingController(
+        text: bankAmount.toStringAsFixed(2)
+      );
+      _cashControllers[invoiceId] = TextEditingController(
+        text: cashAmount.toStringAsFixed(2)
+      );
+      
+      // Сохраняем оригинальные значения
+      _originalBankAmounts[invoiceId] = bankAmount;
+      _originalCashAmounts[invoiceId] = cashAmount;
+    }
+  }
+  
+  // Обработчик фокуса для поля банка
+  void _onBankFieldTap(String invoiceId) {
+    final controller = _bankControllers[invoiceId];
+    if (controller != null) {
+      // Очищаем поле при нажатии
+      controller.clear();
+    }
+  }
+  
+  // Обработчик фокуса для поля наличных
+  void _onCashFieldTap(String invoiceId) {
+    final controller = _cashControllers[invoiceId];
+    if (controller != null) {
+      // Очищаем поле при нажатии
+      controller.clear();
+    }
+  }
+  
+  // Обработчик потери фокуса для поля банка
+  void _onBankFieldUnfocus(String invoiceId) {
+    final controller = _bankControllers[invoiceId];
+    if (controller != null) {
+      final text = controller.text.trim();
+      if (text.isEmpty) {
+        // Если поле пустое, возвращаем оригинальное значение
+        final originalValue = _originalBankAmounts[invoiceId] ?? 0.0;
+        controller.text = originalValue.toStringAsFixed(2);
+        _bankAmounts[invoiceId] = originalValue;
+      } else {
+        // Если есть изменения, сохраняем новое значение
+        final newValue = double.tryParse(text.replaceAll(',', '.')) ?? 0.0;
+        _bankAmounts[invoiceId] = newValue;
+        _originalBankAmounts[invoiceId] = newValue;
+      }
+    }
+  }
+  
+  // Обработчик потери фокуса для поля наличных
+  void _onCashFieldUnfocus(String invoiceId) {
+    final controller = _cashControllers[invoiceId];
+    if (controller != null) {
+      final text = controller.text.trim();
+      if (text.isEmpty) {
+        // Если поле пустое, возвращаем оригинальное значение
+        final originalValue = _originalCashAmounts[invoiceId] ?? 0.0;
+        controller.text = originalValue.toStringAsFixed(2);
+        _cashAmounts[invoiceId] = originalValue;
+      } else {
+        // Если есть изменения, сохраняем новое значение
+        final newValue = double.tryParse(text.replaceAll(',', '.')) ?? 0.0;
+        _cashAmounts[invoiceId] = newValue;
+        _originalCashAmounts[invoiceId] = newValue;
+      }
+    }
   }
 
   void _showPaymentDialog(Invoice invoice) {
@@ -245,146 +341,284 @@ class _AdminDeliveredInvoicesScreenState extends State<AdminDeliveredInvoicesScr
     );
   }
 
+  void _exportInvoicesToExcel() async {
+    if (_filteredInvoices.isEmpty) return;
+    final excelDoc = excel.Excel.createExcel();
+    final sheet = excelDoc['Доставленные накладные'];
+    final cellStyle = excel.CellStyle(
+      fontFamily: 'Times New Roman',
+      fontSize: 25,
+      horizontalAlign: excel.HorizontalAlign.Center,
+      verticalAlign: excel.VerticalAlign.Center,
+    );
+    int currentRow = 0;
+    for (int invoiceIndex = 0; invoiceIndex < _filteredInvoices.length; invoiceIndex++) {
+      final invoice = _filteredInvoices[invoiceIndex];
+      // Заголовок накладной (строка 1)
+      var cell1 = sheet.cell(excel.CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: currentRow));
+      cell1.value = 'MELLO AQTOBE';
+      cell1.cellStyle = cellStyle;
+      var cell2 = sheet.cell(excel.CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: currentRow));
+      cell2.value = DateFormat('dd.MM.yyyy').format(invoice.date.toDate());
+      cell2.cellStyle = cellStyle;
+      currentRow++;
+      // Заголовки таблицы (строка 2)
+      for (int col = 0; col <= 5; col++) {
+        var cell = sheet.cell(excel.CellIndex.indexByColumnRow(columnIndex: col, rowIndex: currentRow));
+        switch (col) {
+          case 0: cell.value = '№'; break;
+          case 1: cell.value = 'Наименование товара'; break;
+          case 2: cell.value = 'Цена по прайсу'; break;
+          case 3: cell.value = 'Цена со скидкой'; break;
+          case 4: cell.value = 'Количество'; break;
+          case 5: cell.value = 'Итого'; break;
+        }
+        cell.cellStyle = cellStyle;
+      }
+      currentRow++;
+      // Товары: сначала обычные, потом бонусные
+      final nonBonusItems = invoice.items.where((item) => !item.isBonus).toList();
+      final bonusItems = invoice.items.where((item) => item.isBonus).toList();
+      for (int itemIndex = 0; itemIndex < nonBonusItems.length; itemIndex++) {
+        final item = nonBonusItems[itemIndex];
+        for (int col = 0; col <= 5; col++) {
+          var cell = sheet.cell(excel.CellIndex.indexByColumnRow(columnIndex: col, rowIndex: currentRow));
+          switch (col) {
+            case 0: cell.value = itemIndex + 1; break;
+            case 1: cell.value = item.productName; break;
+            case 2: cell.value = item.price; break;
+            case 3: cell.value = item.price; break;
+            case 4: cell.value = item.quantity; break;
+            case 5: cell.value = item.totalPrice; break;
+          }
+          cell.cellStyle = cellStyle;
+        }
+        currentRow++;
+      }
+      for (int itemIndex = 0; itemIndex < bonusItems.length; itemIndex++) {
+        final item = bonusItems[itemIndex];
+        for (int col = 0; col <= 5; col++) {
+          var cell = sheet.cell(excel.CellIndex.indexByColumnRow(columnIndex: col, rowIndex: currentRow));
+          switch (col) {
+            case 0: cell.value = nonBonusItems.length + itemIndex + 1; break;
+            case 1: cell.value = 'Бонус ${item.productName}'; break;
+            case 2: cell.value = item.price; break;
+            case 3: cell.value = item.price; break;
+            case 4: cell.value = item.quantity; break;
+            case 5: cell.value = item.totalPrice; break;
+          }
+          cell.cellStyle = cellStyle;
+        }
+        currentRow++;
+      }
+      // Итоги
+      final totalQuantity = invoice.items.fold<int>(0, (sum, item) => sum + item.quantity);
+      var cellItogo = sheet.cell(excel.CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: currentRow));
+      cellItogo.value = 'Итого';
+      cellItogo.cellStyle = cellStyle;
+      var cellQty = sheet.cell(excel.CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: currentRow));
+      cellQty.value = totalQuantity;
+      cellQty.cellStyle = cellStyle;
+      var cellSum = sheet.cell(excel.CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: currentRow));
+      cellSum.value = invoice.totalAmount;
+      cellSum.cellStyle = cellStyle;
+      currentRow++;
+      // Адрес доставки
+      var cellAddr = sheet.cell(excel.CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: currentRow));
+      cellAddr.value = 'адрес доставки: ${invoice.outletName}, ${invoice.outletAddress}';
+      cellAddr.cellStyle = cellStyle;
+      var cellDebt = sheet.cell(excel.CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: currentRow));
+      cellDebt.value = 'долг';
+      cellDebt.cellStyle = cellStyle;
+      var cellDebtSum = sheet.cell(excel.CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: currentRow));
+      cellDebtSum.value = invoice.totalAmount;
+      cellDebtSum.cellStyle = cellStyle;
+      currentRow++;
+      // Контактная информация
+      var cellContact = sheet.cell(excel.CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: currentRow));
+      cellContact.value = '${invoice.salesRepName}';
+      cellContact.cellStyle = cellStyle;
+      currentRow++;
+      // Пустая строка между накладными
+      if (invoiceIndex < _filteredInvoices.length - 1) {
+        currentRow++;
+      }
+    }
+    // Сохраняем файл
+    final bytes = excelDoc.save();
+    if (bytes != null) {
+      await FileSaver.instance.saveFile(
+        name: 'delivered_invoices',
+        bytes: Uint8List.fromList(bytes),
+        ext: 'xlsx',
+        mimeType: MimeType.other,
+        customMimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Доставленные накладные'), actions: [
-        IconButton(icon: Icon(Icons.clear), onPressed: _clearFilters)
-      ]),
+      appBar: AppBar(
+        title: Text('Доставленные накладные'),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.table_chart),
+            tooltip: 'Экспорт в Excel',
+            onPressed: _exportInvoicesToExcel,
+          ),
+          if (!kIsWeb)
+            IconButton(
+              icon: Icon(Icons.filter_list),
+              tooltip: 'Фильтры',
+              onPressed: () async {
+                await showDialog(
+                  context: context,
+                  builder: (context) => _FilterDialog(
+                    salesReps: _salesReps,
+                    selectedSalesRepId: _selectedSalesRepId,
+                    onSalesRepChanged: (val) => setState(() => _selectedSalesRepId = val),
+                    selectedPaymentStatus: _selectedPaymentStatus,
+                    onPaymentStatusChanged: (val) => setState(() => _selectedPaymentStatus = val),
+                    dateFrom: _dateFrom,
+                    dateTo: _dateTo,
+                    onDateFromChanged: (val) => setState(() => _dateFrom = val),
+                    onDateToChanged: (val) => setState(() => _dateTo = val),
+                    onClear: _clearFilters,
+                    onApply: () {
+                      _filterInvoices();
+                      Navigator.pop(context);
+                    },
+                  ),
+                );
+                _filterInvoices();
+              },
+            ),
+          IconButton(icon: Icon(Icons.clear), onPressed: _clearFilters)
+        ],
+      ),
       body: _isLoading
           ? Center(child: CircularProgressIndicator())
           : _errorMessage != null
               ? Center(child: Text('Ошибка: \n$_errorMessage'))
               : Column(
                   children: [
-                    Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: Row(
-                        children: [
-                          // Чекбокс 'Выбрать все'
-                          Checkbox(
-                            value: _filteredInvoices.isNotEmpty && _filteredInvoices.every((inv) => _selectedInvoiceIds.contains(inv.id)),
-                            tristate: false,
-                            onChanged: (val) {
-                              setState(() {
-                                if (val == true) {
-                                  _selectedInvoiceIds.addAll(_filteredInvoices.map((inv) => inv.id));
-                                } else {
-                                  _selectedInvoiceIds.removeAll(_filteredInvoices.map((inv) => inv.id));
-                                }
-                              });
-                            },
-                          ),
-                          Text('Выбрано: ${_selectedInvoiceIds.length} из ${_filteredInvoices.length}', style: TextStyle(fontWeight: FontWeight.w500)),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
-                                DropdownButton<String>(
-                                  value: _selectedSalesRepId,
-                                  hint: Text('Торговый'),
-                                  items: [
-                                    DropdownMenuItem(value: 'all', child: Text('Все')),
-                                    ..._salesReps.map((rep) => DropdownMenuItem(value: rep.id, child: Text(rep.name)))
-                                  ],
-                                  onChanged: (val) {
-                                    setState(() { _selectedSalesRepId = val; });
-                                    _filterInvoices();
-                                  },
-                                ),
-                                DropdownButton<String>(
-                                  value: _selectedPaymentStatus,
-                                  hint: Text('Оплата'),
-                                  items: [
-                                    DropdownMenuItem(value: 'all', child: Text('Все')),
-                                    DropdownMenuItem(value: 'paid', child: Text('Оплачен')),
-                                    DropdownMenuItem(value: 'not_paid', child: Text('Не оплачен')),
-                                    DropdownMenuItem(value: 'debt', child: Text('Долг')),
-                                  ],
-                                  onChanged: (val) {
-                                    setState(() { _selectedPaymentStatus = val; });
-                                    _filterInvoices();
-                                  },
-                                ),
-                                OutlinedButton(
-                                  onPressed: () => _selectDate(context, true),
-                                  child: Text(_dateFrom == null ? 'С даты' : DateFormat('dd.MM.yyyy').format(_dateFrom!)),
-                                ),
-                                OutlinedButton(
-                                  onPressed: () => _selectDate(context, false),
-                                  child: Text(_dateTo == null ? 'По дату' : DateFormat('dd.MM.yyyy').format(_dateTo!)),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Builder(
-                            builder: (context) {
-                              final selected = _filteredInvoices.where((inv) => _selectedInvoiceIds.contains(inv.id)).toList();
-                              bool allValid = selected.isNotEmpty && selected.every((inv) {
-                                final bank = _bankAmounts[inv.id] ?? inv.totalAmount;
-                                final cash = _cashAmounts[inv.id] ?? 0.0;
-                                return (bank + cash - inv.totalAmount).abs() < 0.01;
-                              });
-                              final totalBank = selected.fold<double>(0.0, (sum, inv) => sum + (_bankAmounts[inv.id] ?? inv.totalAmount));
-                              final totalCash = selected.fold<double>(0.0, (sum, inv) => sum + (_cashAmounts[inv.id] ?? 0.0));
-                              return Row(
-                                mainAxisSize: MainAxisSize.min,
+                    if (kIsWeb)
+                      Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
                                 children: [
-                                  ElevatedButton(
-                                    onPressed: allValid
-                                        ? () async {
-                                            for (final inv in selected) {
-                                              final bank = _bankAmounts[inv.id] ?? inv.totalAmount;
-                                              final cash = _cashAmounts[inv.id] ?? 0.0;
-                                              await _invoiceService.updateInvoicePayment(
-                                                inv.id,
-                                                true,
-                                                (bank > 0 && cash > 0)
-                                                    ? 'mixed'
-                                                    : (bank > 0)
-                                                        ? 'bank'
-                                                        : 'cash',
-                                                '',
-                                                bankAmount: bank,
-                                                cashAmount: cash,
-                                              );
-                                              await _invoiceService.updateInvoice(
-                                                inv.copyWith(
-                                                  status: InvoiceStatus.paymentChecked,
-                                                  acceptedByAdmin: true,
-                                                  bankAmount: bank,
-                                                  cashAmount: cash,
-                                                ),
-                                              );
-                                            }
-                                            _loadData();
-                                          }
-                                        : null,
-                                    child: Text('Принять все'),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.deepPurple,
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 24),
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.end,
-                                    children: [
-                                      Text('Банк: ${totalBank.toStringAsFixed(2)} ₸', style: TextStyle(fontWeight: FontWeight.w500)),
-                                      Text('Наличные: ${totalCash.toStringAsFixed(2)} ₸', style: TextStyle(fontWeight: FontWeight.w500)),
+                                  DropdownButton<String>(
+                                    value: _selectedSalesRepId,
+                                    hint: Text('Торговый'),
+                                    items: [
+                                      DropdownMenuItem(value: 'all', child: Text('Все')),
+                                      ..._salesReps.map((rep) => DropdownMenuItem(value: rep.id, child: Text(rep.name)))
                                     ],
+                                    onChanged: (val) {
+                                      setState(() { _selectedSalesRepId = val; });
+                                      _filterInvoices();
+                                    },
+                                  ),
+                                  DropdownButton<String>(
+                                    value: _selectedPaymentStatus,
+                                    hint: Text('Оплата'),
+                                    items: [
+                                      DropdownMenuItem(value: 'all', child: Text('Все')),
+                                      DropdownMenuItem(value: 'paid', child: Text('Оплачен')),
+                                      DropdownMenuItem(value: 'not_paid', child: Text('Не оплачен')),
+                                      DropdownMenuItem(value: 'debt', child: Text('Долг')),
+                                    ],
+                                    onChanged: (val) {
+                                      setState(() { _selectedPaymentStatus = val; });
+                                      _filterInvoices();
+                                    },
+                                  ),
+                                  OutlinedButton(
+                                    onPressed: () => _selectDate(context, true),
+                                    child: Text(_dateFrom == null ? 'С даты' : DateFormat('dd.MM.yyyy').format(_dateFrom!)),
+                                  ),
+                                  OutlinedButton(
+                                    onPressed: () => _selectDate(context, false),
+                                    child: Text(_dateTo == null ? 'По дату' : DateFormat('dd.MM.yyyy').format(_dateTo!)),
                                   ),
                                 ],
-                              );
-                            },
-                          ),
-                        ],
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
+                   Padding(
+                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                     child: Builder(
+                       builder: (context) {
+                         final selected = _filteredInvoices.where((inv) => _selectedInvoiceIds.contains(inv.id)).toList();
+                         bool allValid = selected.isNotEmpty && selected.every((inv) {
+                           final bank = _bankAmounts[inv.id] ?? inv.totalAmount;
+                           final cash = _cashAmounts[inv.id] ?? 0.0;
+                           return (bank + cash - inv.totalAmount).abs() < 0.01;
+                         });
+                         final totalBank = selected.fold<double>(0.0, (sum, inv) => sum + (_bankAmounts[inv.id] ?? inv.totalAmount));
+                         final totalCash = selected.fold<double>(0.0, (sum, inv) => sum + (_cashAmounts[inv.id] ?? 0.0));
+                         return Row(
+                           children: [
+                             Spacer(),
+                             Column(
+                               crossAxisAlignment: CrossAxisAlignment.end,
+                               children: [
+                                 ElevatedButton(
+                                   onPressed: allValid && selected.isNotEmpty
+                                       ? () async {
+                                           for (final inv in selected) {
+                                             final bank = _bankAmounts[inv.id] ?? inv.totalAmount;
+                                             final cash = _cashAmounts[inv.id] ?? 0.0;
+                                             await _invoiceService.updateInvoicePayment(
+                                               inv.id,
+                                               true,
+                                               (bank > 0 && cash > 0)
+                                                   ? 'mixed'
+                                                   : (bank > 0)
+                                                       ? 'bank'
+                                                       : 'cash',
+                                               '',
+                                               bankAmount: bank,
+                                               cashAmount: cash,
+                                             );
+                                             await _invoiceService.updateInvoice(
+                                               inv.copyWith(
+                                                 status: InvoiceStatus.delivered,
+                                                 acceptedByAdmin: true,
+                                                 bankAmount: bank,
+                                                 cashAmount: cash,
+                                               ),
+                                             );
+                                           }
+                                           _loadData();
+                                         }
+                                       : null,
+                                   child: Text('Принять все'),
+                                   style: ElevatedButton.styleFrom(
+                                     backgroundColor: Colors.deepPurple,
+                                     foregroundColor: Colors.white,
+                                     padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                                   ),
+                                 ),
+                                 const SizedBox(height: 8),
+                                 Text('Банк: ${totalBank.toStringAsFixed(2)} ₸', style: TextStyle(fontWeight: FontWeight.w500)),
+                                 Text('Наличные: ${totalCash.toStringAsFixed(2)} ₸', style: TextStyle(fontWeight: FontWeight.w500)),
+                               ],
+                             ),
+                           ],
+                         );
+                       },
+                     ),
+                   ),
                     Expanded(
                       child: _filteredInvoices.isEmpty
                           ? Center(child: Text('Нет доставленных накладных'))
@@ -392,208 +626,445 @@ class _AdminDeliveredInvoicesScreenState extends State<AdminDeliveredInvoicesScr
                               itemCount: _filteredInvoices.length,
                               itemBuilder: (context, index) {
                                 final invoice = _filteredInvoices[index];
-                                final date = invoice.date.toDate();
-                                final dateStr = DateFormat('dd.MM.yyyy').format(date);
-                                final dateNum = DateFormat('ddMMyyyy').format(date);
-                                String suffix = '';
-                                final idMatch = RegExp(r'(\d{4})$').firstMatch(invoice.id);
-                                if (idMatch != null) {
-                                  suffix = idMatch.group(1)!;
-                                } else {
-                                  suffix = (index + 1).toString().padLeft(4, '0');
-                                }
-                                final customNumber = '$dateNum-$suffix';
-                                final isSelected = _selectedInvoiceIds.contains(invoice.id);
-                                final bgColor = isSelected
-                                    ? const Color(0xFFEDE7F6) // светло-фиолетовый
-                                    : index % 2 == 0 ? Colors.white : Colors.grey.shade100;
-                                return Container(
-                                  color: bgColor,
-                                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 0),
-                                  child: Row(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                // Инициализируем контроллеры для этой накладной
+                                _initializeControllers(invoice.id, invoice.totalAmount);
+                                
+                                // Добавляем общую сумму в начале для мобильных
+                                if (index == 0 && !kIsWeb) {
+                                  final totalSum = _filteredInvoices.fold<double>(
+                                    0.0, (sum, inv) => sum + inv.totalAmount
+                                  );
+                                  return Column(
                                     children: [
-                                      // Чекбокс выбора
-                                      Padding(
-                                        padding: const EdgeInsets.only(left: 8, right: 0, top: 16),
-                                        child: Checkbox(
-                                          value: _selectedInvoiceIds.contains(invoice.id),
-                                          onChanged: (val) {
-                                            setState(() {
-                                              if (val == true) {
-                                                _selectedInvoiceIds.add(invoice.id);
-                                              } else {
-                                                _selectedInvoiceIds.remove(invoice.id);
-                                              }
-                                            });
-                                          },
-                                        ),
-                                      ),
-                                      // Левая часть: информация о накладной
-                                      Expanded(
-                                        child: ListTile(
-                                          contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-                                          leading: Column(
-                                            mainAxisAlignment: MainAxisAlignment.center,
-                                            children: [
-                                              Text('${index + 1}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                                              Text(dateStr, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                                            ],
-                                          ),
-                                          title: Text('Накладная $customNumber'),
-                                          subtitle: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Text('Точка: ${invoice.outletName}'),
-                                              Text('Адрес: ${invoice.outletAddress}'),
-                                              Text('Торговый: ${invoice.salesRepName}'),
-                                            ],
-                                          ),
-                                          onTap: () {
-                                            Navigator.push(
-                                              context,
-                                              MaterialPageRoute(
-                                                builder: (_) => InvoiceScreen(invoiceId: invoice.id),
-                                              ),
-                                            );
-                                          },
-                                        ),
-                                      ),
-                                      // Правая часть: оплата и кнопка
                                       Container(
-                                        width: 220,
-                                        padding: const EdgeInsets.only(right: 12, top: 8, bottom: 8),
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                        margin: EdgeInsets.all(16),
+                                        padding: EdgeInsets.all(16),
+                                        decoration: BoxDecoration(
+                                          color: Colors.deepPurple.withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(8),
+                                          border: Border.all(color: Colors.deepPurple),
+                                        ),
+                                        child: Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                           children: [
-                                            Row(
-                                              children: [
-                                                Expanded(
-                                                  child: Align(
-                                                    alignment: Alignment.centerRight,
-                                                    child: Text('Банк:', style: TextStyle(fontWeight: FontWeight.w500)),
-                                                  ),
-                                                ),
-                                                const SizedBox(width: 8),
-                                                SizedBox(
-                                                  width: 90,
-                                                  child: Align(
-                                                    alignment: Alignment.centerLeft,
-                                                    child: TextFormField(
-                                                      initialValue: _bankAmounts[invoice.id]?.toStringAsFixed(2) ?? invoice.totalAmount.toStringAsFixed(2),
-                                                      keyboardType: TextInputType.numberWithOptions(decimal: true),
-                                                      textAlign: TextAlign.left,
-                                                      decoration: InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(vertical: 8)),
-                                                      onChanged: (val) {
-                                                        setState(() {
-                                                          _bankAmounts[invoice.id] = double.tryParse(val.replaceAll(',', '.')) ?? 0.0;
-                                                        });
-                                                      },
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
+                                            Text(
+                                              'Общая сумма:',
+                                              style: TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.deepPurple,
+                                              ),
                                             ),
-                                            const SizedBox(height: 8),
-                                            Row(
-                                              children: [
-                                                Expanded(
-                                                  child: Align(
-                                                    alignment: Alignment.centerRight,
-                                                    child: Text('Наличные:', style: TextStyle(fontWeight: FontWeight.w500)),
-                                                  ),
-                                                ),
-                                                const SizedBox(width: 8),
-                                                SizedBox(
-                                                  width: 90,
-                                                  child: Align(
-                                                    alignment: Alignment.centerLeft,
-                                                    child: TextFormField(
-                                                      initialValue: _cashAmounts[invoice.id]?.toStringAsFixed(2) ?? '0.00',
-                                                      keyboardType: TextInputType.numberWithOptions(decimal: true),
-                                                      textAlign: TextAlign.left,
-                                                      decoration: InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(vertical: 8)),
-                                                      onChanged: (val) {
-                                                        setState(() {
-                                                          _cashAmounts[invoice.id] = double.tryParse(val.replaceAll(',', '.')) ?? 0.0;
-                                                        });
-                                                      },
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                            const SizedBox(height: 8),
-                                            Builder(
-                                              builder: (context) {
-                                                final bank = _bankAmounts[invoice.id] ?? invoice.totalAmount;
-                                                final cash = _cashAmounts[invoice.id] ?? 0.0;
-                                                final total = bank + cash;
-                                                final isSumValid = (total - invoice.totalAmount).abs() < 0.01;
-                                                return Row(
-                                                  children: [
-                                                    Text('Итого:', style: TextStyle(fontWeight: FontWeight.w500)),
-                                                    const SizedBox(width: 8),
-                                                    Text(
-                                                      '${total.toStringAsFixed(2)} ₸',
-                                                      style: TextStyle(
-                                                        color: isSumValid ? Colors.green : Colors.red,
-                                                        fontWeight: FontWeight.bold,
-                                                      ),
-                                                    ),
-                                                    Text(' из ${invoice.totalAmount.toStringAsFixed(2)} ₸'),
-                                                  ],
-                                                );
-                                              },
-                                            ),
-                                            const SizedBox(height: 12),
-                                            Builder(
-                                              builder: (context) {
-                                                final bank = _bankAmounts[invoice.id] ?? invoice.totalAmount;
-                                                final cash = _cashAmounts[invoice.id] ?? 0.0;
-                                                final total = bank + cash;
-                                                final isSumValid = (total - invoice.totalAmount).abs() < 0.01;
-                                                return ElevatedButton(
-                                                  child: Text('Принять оплату'),
-                                                  onPressed: _selectedInvoiceIds.contains(invoice.id) && isSumValid
-                                                      ? () async {
-                                                          await _invoiceService.updateInvoicePayment(
-                                                            invoice.id,
-                                                            true,
-                                                            (bank > 0 && cash > 0)
-                                                                ? 'mixed'
-                                                                : (bank > 0)
-                                                                    ? 'bank'
-                                                                    : 'cash',
-                                                            '',
-                                                            bankAmount: bank,
-                                                            cashAmount: cash,
-                                                          );
-                                                          await _invoiceService.updateInvoice(
-                                                            invoice.copyWith(
-                                                              status: InvoiceStatus.paymentChecked,
-                                                              acceptedByAdmin: true,
-                                                              bankAmount: bank,
-                                                              cashAmount: cash,
-                                                            ),
-                                                          );
-                                                          _loadData();
-                                                        }
-                                                      : null,
-                                                );
-                                              },
+                                            Text(
+                                              '${totalSum.toStringAsFixed(2)} ₸',
+                                              style: TextStyle(
+                                                fontSize: 18,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.deepPurple,
+                                              ),
                                             ),
                                           ],
                                         ),
                                       ),
+                                      _buildInvoiceItem(invoice, index),
                                     ],
-                                  ),
-                                );
+                                  );
+                                }
+                                
+                                return _buildInvoiceItem(invoice, index);
                               },
                             ),
                     ),
                   ],
                 ),
+    );
+  }
+ 
+  Widget _buildInvoiceItem(Invoice invoice, int index) {
+    final date = invoice.date.toDate();
+    final dateStr = DateFormat('dd.MM.yyyy').format(date);
+    final dateNum = DateFormat('ddMMyyyy').format(date);
+    String suffix = '';
+    final idMatch = RegExp(r'(\d{4})$').firstMatch(invoice.id);
+    if (idMatch != null) {
+      suffix = idMatch.group(1)!;
+    } else {
+      suffix = (index + 1).toString().padLeft(4, '0');
+    }
+    final customNumber = '$dateNum-$suffix';
+    final isSelected = _selectedInvoiceIds.contains(invoice.id);
+    final bgColor = isSelected
+        ? const Color(0xFFEDE7F6) // светло-фиолетовый
+        : index % 2 == 0 ? Colors.white : Colors.grey.shade100;
+    return Container(
+      color: bgColor,
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 0),
+      child: Column(
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Чекбокс выбора
+              Padding(
+                padding: const EdgeInsets.only(left: 8, right: 0, top: 16),
+                child: Checkbox(
+                  value: _selectedInvoiceIds.contains(invoice.id),
+                  onChanged: (val) {
+                    setState(() {
+                      if (val == true) {
+                        _selectedInvoiceIds.add(invoice.id);
+                      } else {
+                        _selectedInvoiceIds.remove(invoice.id);
+                      }
+                    });
+                  },
+                ),
+              ),
+              // Левая часть: информация о накладной
+              Expanded(
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                  leading: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text('${index + 1}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                      Text(dateStr, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                    ],
+                  ),
+                  title: Text('Накладная $customNumber'),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Точка: ${invoice.outletName}'),
+                      Text('Адрес: ${invoice.outletAddress}'),
+                      Text('Торговый: ${invoice.salesRepName}'),
+                    ],
+                  ),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => InvoiceScreen(invoiceId: invoice.id),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              // Правая часть: оплата
+              Container(
+                width: 220,
+                padding: const EdgeInsets.only(right: 12, top: 8, bottom: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: Text('Банк:', style: TextStyle(fontWeight: FontWeight.w500)),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: 90,
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: TextFormField(
+                              controller: _bankControllers[invoice.id],
+                              keyboardType: TextInputType.numberWithOptions(decimal: true),
+                              textAlign: TextAlign.left,
+                              decoration: InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(vertical: 8)),
+                              onTap: () => _onBankFieldTap(invoice.id),
+                              onEditingComplete: () => _onBankFieldUnfocus(invoice.id),
+                              onChanged: (val) {
+                                setState(() {
+                                  _bankAmounts[invoice.id] = double.tryParse(val.replaceAll(',', '.')) ?? 0.0;
+                                });
+                              },
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: Text('Наличные:', style: TextStyle(fontWeight: FontWeight.w500)),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: 90,
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: TextFormField(
+                              controller: _cashControllers[invoice.id],
+                              keyboardType: TextInputType.numberWithOptions(decimal: true),
+                              textAlign: TextAlign.left,
+                              decoration: InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(vertical: 8)),
+                              onTap: () => _onCashFieldTap(invoice.id),
+                              onEditingComplete: () => _onCashFieldUnfocus(invoice.id),
+                              onChanged: (val) {
+                                setState(() {
+                                  _cashAmounts[invoice.id] = double.tryParse(val.replaceAll(',', '.')) ?? 0.0;
+                                });
+                              },
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Builder(
+                      builder: (context) {
+                        final bank = _bankAmounts[invoice.id] ?? invoice.totalAmount;
+                        final cash = _cashAmounts[invoice.id] ?? 0.0;
+                        final total = bank + cash;
+                        final isSumValid = (total - invoice.totalAmount).abs() < 0.01;
+                        return Row(
+                          children: [
+                            Text('Итого:', style: TextStyle(fontWeight: FontWeight.w500)),
+                            const SizedBox(width: 8),
+                            Text(
+                              '${total.toStringAsFixed(2)} ₸',
+                              style: TextStyle(
+                                color: isSumValid ? Colors.green : Colors.red,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(' из ${invoice.totalAmount.toStringAsFixed(2)} ₸'),
+                          ],
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    Builder(
+                      builder: (context) {
+                        final bank = _bankAmounts[invoice.id] ?? invoice.totalAmount;
+                        final cash = _cashAmounts[invoice.id] ?? 0.0;
+                        final total = bank + cash;
+                        final isSumValid = (total - invoice.totalAmount).abs() < 0.01;
+                        return ElevatedButton(
+                          child: Text('Принять оплату'),
+                          onPressed: _selectedInvoiceIds.contains(invoice.id) && isSumValid
+                              ? () async {
+                                  await _invoiceService.updateInvoicePayment(
+                                    invoice.id,
+                                    true,
+                                    (bank > 0 && cash > 0)
+                                        ? 'mixed'
+                                        : (bank > 0)
+                                            ? 'bank'
+                                            : 'cash',
+                                    '',
+                                    bankAmount: bank,
+                                    cashAmount: cash,
+                                  );
+                                  await _invoiceService.updateInvoice(
+                                    invoice.copyWith(
+                                      status: InvoiceStatus.paymentChecked,
+                                      acceptedByAdmin: true,
+                                      bankAmount: bank,
+                                      cashAmount: cash,
+                                    ),
+                                  );
+                                  _loadData();
+                                }
+                              : null,
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          // Кнопки действий внизу для мобильных устройств
+          if (!kIsWeb) ...[
+            SizedBox(height: 16),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => InvoiceCreateScreen(invoiceToEdit: invoice),
+                          ),
+                        ).then((_) => _loadData());
+                      },
+                      icon: Icon(Icons.edit, color: Colors.white),
+                      label: Text('Редактировать'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.deepPurple,
+                        foregroundColor: Colors.white,
+                        padding: EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () async {
+                        final confirm = await showDialog<bool>(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: Text('Удалить накладную?'),
+                            content: Text('Вы уверены, что хотите удалить накладную?'),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context, false),
+                                child: Text('Отмена'),
+                              ),
+                              ElevatedButton(
+                                onPressed: () => Navigator.pop(context, true),
+                                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                                child: Text('Удалить'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirm == true) {
+                          await _invoiceService.deleteInvoice(invoice.id);
+                          _loadData();
+                        }
+                      },
+                      icon: Icon(Icons.delete, color: Colors.white),
+                      label: Text('Удалить'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        foregroundColor: Colors.white,
+                        padding: EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        final buffer = StringBuffer();
+                        buffer.writeln('Накладная ${invoice.id}');
+                        buffer.writeln('Точка: ${invoice.outletName}');
+                        buffer.writeln('Адрес: ${invoice.outletAddress}');
+                        buffer.writeln('Торговый: ${invoice.salesRepName}');
+                        buffer.writeln('Сумма: ${invoice.totalAmount.toStringAsFixed(2)} ₸');
+                        buffer.writeln('Статус: ${InvoiceStatus.getName(invoice.status)}');
+                        Share.share(buffer.toString());
+                      },
+                      icon: Icon(Icons.share, color: Colors.white),
+                      label: Text('Поделиться'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue,
+                        foregroundColor: Colors.white,
+                        padding: EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+} 
+
+// Вспомогательный диалог фильтров
+class _FilterDialog extends StatelessWidget {
+  final List<SalesRep> salesReps;
+  final String? selectedSalesRepId;
+  final ValueChanged<String?> onSalesRepChanged;
+  final String? selectedPaymentStatus;
+  final ValueChanged<String?> onPaymentStatusChanged;
+  final DateTime? dateFrom;
+  final DateTime? dateTo;
+  final ValueChanged<DateTime?> onDateFromChanged;
+  final ValueChanged<DateTime?> onDateToChanged;
+  final VoidCallback onClear;
+  final VoidCallback onApply;
+  const _FilterDialog({
+    required this.salesReps,
+    required this.selectedSalesRepId,
+    required this.onSalesRepChanged,
+    required this.selectedPaymentStatus,
+    required this.onPaymentStatusChanged,
+    required this.dateFrom,
+    required this.dateTo,
+    required this.onDateFromChanged,
+    required this.onDateToChanged,
+    required this.onClear,
+    required this.onApply,
+  });
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Фильтры'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            DropdownButton<String>(
+              value: selectedSalesRepId,
+              hint: Text('Торговый'),
+              items: [
+                DropdownMenuItem(value: 'all', child: Text('Все')),
+                ...salesReps.map((rep) => DropdownMenuItem(value: rep.id, child: Text(rep.name)))
+              ],
+              onChanged: onSalesRepChanged,
+            ),
+            DropdownButton<String>(
+              value: selectedPaymentStatus,
+              hint: Text('Оплата'),
+              items: [
+                DropdownMenuItem(value: 'all', child: Text('Все')),
+                DropdownMenuItem(value: 'paid', child: Text('Оплачен')),
+                DropdownMenuItem(value: 'not_paid', child: Text('Не оплачен')),
+                DropdownMenuItem(value: 'debt', child: Text('Долг')),
+              ],
+              onChanged: onPaymentStatusChanged,
+            ),
+            OutlinedButton(
+              onPressed: () async {
+                final picked = await showDatePicker(
+                  context: context,
+                  initialDate: dateFrom ?? DateTime.now(),
+                  firstDate: DateTime(2022),
+                  lastDate: DateTime(2100),
+                );
+                if (picked != null) onDateFromChanged(picked);
+              },
+              child: Text(dateFrom == null ? 'С даты' : DateFormat('dd.MM.yyyy').format(dateFrom!)),
+            ),
+            OutlinedButton(
+              onPressed: () async {
+                final picked = await showDatePicker(
+                  context: context,
+                  initialDate: dateTo ?? DateTime.now(),
+                  firstDate: DateTime(2022),
+                  lastDate: DateTime(2100),
+                );
+                if (picked != null) onDateToChanged(picked);
+              },
+              child: Text(dateTo == null ? 'По дату' : DateFormat('dd.MM.yyyy').format(dateTo!)),
+            ),
+            OutlinedButton(onPressed: onClear, child: Text('Сбросить фильтры')),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: Text('Отмена')),
+        ElevatedButton(onPressed: onApply, child: Text('Применить')),
+      ],
     );
   }
 } 

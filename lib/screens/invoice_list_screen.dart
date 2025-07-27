@@ -381,6 +381,122 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
     }
   }
 
+  void _exportInvoicesToExcel() async {
+    if (_filteredInvoices.isEmpty) return;
+    final excel = Excel.createExcel();
+    final sheet = excel['Архив накладных'];
+    final cellStyle = CellStyle(
+      fontFamily: 'Times New Roman',
+      fontSize: 25,
+      horizontalAlign: HorizontalAlign.Center,
+      verticalAlign: VerticalAlign.Center,
+    );
+    int currentRow = 0;
+    for (int invoiceIndex = 0; invoiceIndex < _filteredInvoices.length; invoiceIndex++) {
+      final invoice = _filteredInvoices[invoiceIndex];
+      // Заголовок накладной (строка 1)
+      var cell1 = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: currentRow));
+      cell1.value = 'MELLO AQTOBE';
+      cell1.cellStyle = cellStyle;
+      var cell2 = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: currentRow));
+      cell2.value = DateFormat('dd.MM.yyyy').format(invoice.date.toDate());
+      cell2.cellStyle = cellStyle;
+      currentRow++;
+      // Заголовки таблицы (строка 2)
+      for (int col = 0; col <= 5; col++) {
+        var cell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: currentRow));
+        switch (col) {
+          case 0: cell.value = '№'; break;
+          case 1: cell.value = 'Наименование товара'; break;
+          case 2: cell.value = 'Цена по прайсу'; break;
+          case 3: cell.value = 'Цена со скидкой'; break;
+          case 4: cell.value = 'Количество'; break;
+          case 5: cell.value = 'Итого'; break;
+        }
+        cell.cellStyle = cellStyle;
+      }
+      currentRow++;
+      // Товары: сначала обычные, потом бонусные
+      final nonBonusItems = invoice.items.where((item) => !item.isBonus).toList();
+      final bonusItems = invoice.items.where((item) => item.isBonus).toList();
+      for (int itemIndex = 0; itemIndex < nonBonusItems.length; itemIndex++) {
+        final item = nonBonusItems[itemIndex];
+        for (int col = 0; col <= 5; col++) {
+          var cell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: currentRow));
+          switch (col) {
+            case 0: cell.value = itemIndex + 1; break;
+            case 1: cell.value = item.productName; break;
+            case 2: cell.value = item.price; break;
+            case 3: cell.value = item.price; break;
+            case 4: cell.value = item.quantity; break;
+            case 5: cell.value = item.totalPrice; break;
+          }
+          cell.cellStyle = cellStyle;
+        }
+        currentRow++;
+      }
+      for (int itemIndex = 0; itemIndex < bonusItems.length; itemIndex++) {
+        final item = bonusItems[itemIndex];
+        for (int col = 0; col <= 5; col++) {
+          var cell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: currentRow));
+          switch (col) {
+            case 0: cell.value = nonBonusItems.length + itemIndex + 1; break;
+            case 1: cell.value = 'Бонус ${item.productName}'; break;
+            case 2: cell.value = item.price; break;
+            case 3: cell.value = item.price; break;
+            case 4: cell.value = item.quantity; break;
+            case 5: cell.value = item.totalPrice; break;
+          }
+          cell.cellStyle = cellStyle;
+        }
+        currentRow++;
+      }
+      // Итоги
+      final totalQuantity = invoice.items.fold<int>(0, (sum, item) => sum + item.quantity);
+      var cellItogo = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: currentRow));
+      cellItogo.value = 'Итого';
+      cellItogo.cellStyle = cellStyle;
+      var cellQty = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: currentRow));
+      cellQty.value = totalQuantity;
+      cellQty.cellStyle = cellStyle;
+      var cellSum = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: currentRow));
+      cellSum.value = invoice.totalAmount;
+      cellSum.cellStyle = cellStyle;
+      currentRow++;
+      // Адрес доставки
+      var cellAddr = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: currentRow));
+      cellAddr.value = 'адрес доставки: ${invoice.outletName}, ${invoice.outletAddress}';
+      cellAddr.cellStyle = cellStyle;
+      var cellDebt = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: currentRow));
+      cellDebt.value = 'долг';
+      cellDebt.cellStyle = cellStyle;
+      var cellDebtSum = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: currentRow));
+      cellDebtSum.value = invoice.totalAmount;
+      cellDebtSum.cellStyle = cellStyle;
+      currentRow++;
+      // Контактная информация
+      var cellContact = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: currentRow));
+      cellContact.value = '${invoice.salesRepName}';
+      cellContact.cellStyle = cellStyle;
+      currentRow++;
+      // Пустая строка между накладными
+      if (invoiceIndex < _filteredInvoices.length - 1) {
+        currentRow++;
+      }
+    }
+    // Сохраняем файл
+    final bytes = excel.save();
+    if (bytes != null) {
+      await FileSaver.instance.saveFile(
+        name: 'archive_invoices',
+        bytes: Uint8List.fromList(bytes),
+        ext: 'xlsx',
+        mimeType: MimeType.other,
+        customMimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+    }
+  }
+
   Color _getStatusColor(int status) {
     switch (status) {
       case InvoiceStatus.review:
@@ -410,6 +526,36 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
             icon: const Icon(Icons.refresh),
             onPressed: _loadUserAndInvoices,
           ),
+          if (!kIsWeb)
+            IconButton(
+              icon: Icon(Icons.filter_list),
+              tooltip: 'Фильтры',
+              onPressed: () async {
+                await showDialog(
+                  context: context,
+                  builder: (context) => _FilterDialog(
+                    searchQuery: _searchQuery,
+                    onSearchChanged: (val) => setState(() => _searchQuery = val),
+                    selectedFilter: _selectedFilter,
+                    onFilterChanged: (val) => setState(() => _selectedFilter = val ?? 'all'),
+                    salesReps: _salesReps,
+                    selectedSalesRepId: _selectedSalesRepId,
+                    onSalesRepChanged: (val) => setState(() => _selectedSalesRepId = val),
+                    selectedPaymentStatus: _selectedPaymentStatus,
+                    onPaymentStatusChanged: (val) => setState(() => _selectedPaymentStatus = val),
+                    dateFrom: _dateFrom,
+                    dateTo: _dateTo,
+                    onDateFromChanged: (val) => setState(() => _dateFrom = val),
+                    onDateToChanged: (val) => setState(() => _dateTo = val),
+                    onApply: () {
+                      _filterInvoices();
+                      Navigator.pop(context);
+                    },
+                  ),
+                );
+                _filterInvoices();
+              },
+            ),
           if (_selectedInvoiceIds.isNotEmpty && kIsWeb)
             IconButton(
               icon: const Icon(Icons.print),
@@ -426,160 +572,160 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
             IconButton(
               icon: const Icon(Icons.table_chart),
               tooltip: 'Экспорт в Excel',
-              onPressed: _exportSelectedInvoicesToExcel,
+              onPressed: _exportInvoicesToExcel,
             ),
         ],
       ),
       body: Column(
         children: [
-          // Поиск и фильтры
-          Container(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                // Поиск
-                TextField(
-                  decoration: const InputDecoration(
-                    hintText: 'Поиск по точке, торговому или ID накладной',
-                    prefixIcon: Icon(Icons.search),
-                    border: OutlineInputBorder(),
+          if (kIsWeb)
+            Container(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  // Поиск
+                  TextField(
+                    decoration: const InputDecoration(
+                      hintText: 'Поиск по точке, торговому или ID накладной',
+                      prefixIcon: Icon(Icons.search),
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (value) {
+                      setState(() {
+                        _searchQuery = value;
+                      });
+                      _filterInvoices();
+                    },
                   ),
-                  onChanged: (value) {
-                    setState(() {
-                      _searchQuery = value;
-                    });
-                    _filterInvoices();
-                  },
-                ),
-                const SizedBox(height: 12),
-                // Фильтры по дате
-                Row(
-                  children: [
-                    const Text('Период: ', style: TextStyle(fontWeight: FontWeight.bold)),
-                    Expanded(
-                      child: DropdownButton<String>(
-                        value: _selectedFilter,
-                        isExpanded: true,
-                        items: const [
-                          DropdownMenuItem(value: 'all', child: Text('Все')),
-                          DropdownMenuItem(value: 'today', child: Text('Сегодня')),
-                          DropdownMenuItem(value: 'week', child: Text('Неделя')),
-                          DropdownMenuItem(value: 'month', child: Text('Месяц')),
-                        ],
-                        onChanged: (value) {
-                          setState(() {
-                            _selectedFilter = value!;
-                          });
-                          _filterInvoices();
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-                // Фильтры по торговому, оплате, дате
-                Row(
-                  children: [
-                    // Торговый
-                    Expanded(
-                      child: DropdownButton<String>(
-                        value: _selectedSalesRepId ?? 'all',
-                        isExpanded: true,
-                        items: [
-                          const DropdownMenuItem(value: 'all', child: Text('Все торговые')),
-                          ..._salesReps.map((rep) => DropdownMenuItem(value: rep.id, child: Text(rep.name))),
-                        ],
-                        onChanged: (value) {
-                          setState(() {
-                            _selectedSalesRepId = value;
-                          });
-                          _filterInvoices();
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    // Оплата
-                    Expanded(
-                      child: DropdownButton<String>(
-                        value: _selectedPaymentStatus ?? 'all',
-                        isExpanded: true,
-                        items: const [
-                          DropdownMenuItem(value: 'all', child: Text('Все оплаты')),
-                          DropdownMenuItem(value: 'paid', child: Text('Оплачено')),
-                          DropdownMenuItem(value: 'not_paid', child: Text('Не оплачено')),
-                          DropdownMenuItem(value: 'debt', child: Text('Долг')),
-                        ],
-                        onChanged: (value) {
-                          setState(() {
-                            _selectedPaymentStatus = value;
-                          });
-                          _filterInvoices();
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                // Дата
-                Row(
-                  children: [
-                    Expanded(
-                      child: InkWell(
-                        onTap: () async {
-                          final picked = await showDatePicker(
-                            context: context,
-                            initialDate: _dateFrom ?? DateTime.now(),
-                            firstDate: DateTime(2020),
-                            lastDate: DateTime.now(),
-                          );
-                          if (picked != null) {
+                  const SizedBox(height: 12),
+                  // Фильтры по дате
+                  Row(
+                    children: [
+                      const Text('Период: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                      Expanded(
+                        child: DropdownButton<String>(
+                          value: _selectedFilter,
+                          isExpanded: true,
+                          items: const [
+                            DropdownMenuItem(value: 'all', child: Text('Все')),
+                            DropdownMenuItem(value: 'today', child: Text('Сегодня')),
+                            DropdownMenuItem(value: 'week', child: Text('Неделя')),
+                            DropdownMenuItem(value: 'month', child: Text('Месяц')),
+                          ],
+                          onChanged: (value) {
                             setState(() {
-                              _dateFrom = picked;
+                              _selectedFilter = value!;
                             });
                             _filterInvoices();
-                          }
-                        },
-                        child: InputDecorator(
-                          decoration: const InputDecoration(
-                            labelText: 'Дата с',
-                            border: OutlineInputBorder(),
-                            prefixIcon: Icon(Icons.date_range),
-                          ),
-                          child: Text(_dateFrom != null ? DateFormat('dd.MM.yyyy').format(_dateFrom!) : 'Не выбрано'),
+                          },
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: InkWell(
-                        onTap: () async {
-                          final picked = await showDatePicker(
-                            context: context,
-                            initialDate: _dateTo ?? DateTime.now(),
-                            firstDate: DateTime(2020),
-                            lastDate: DateTime.now(),
-                          );
-                          if (picked != null) {
+                    ],
+                  ),
+                  // Фильтры по торговому, оплате, дате
+                  Row(
+                    children: [
+                      // Торговый
+                      Expanded(
+                        child: DropdownButton<String>(
+                          value: _selectedSalesRepId ?? 'all',
+                          isExpanded: true,
+                          items: [
+                            const DropdownMenuItem(value: 'all', child: Text('Все торговые')),
+                            ..._salesReps.map((rep) => DropdownMenuItem(value: rep.id, child: Text(rep.name))),
+                          ],
+                          onChanged: (value) {
                             setState(() {
-                              _dateTo = picked;
+                              _selectedSalesRepId = value;
                             });
                             _filterInvoices();
-                          }
-                        },
-                        child: InputDecorator(
-                          decoration: const InputDecoration(
-                            labelText: 'Дата по',
-                            border: OutlineInputBorder(),
-                            prefixIcon: Icon(Icons.date_range),
-                          ),
-                          child: Text(_dateTo != null ? DateFormat('dd.MM.yyyy').format(_dateTo!) : 'Не выбрано'),
+                          },
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ],
+                      const SizedBox(width: 8),
+                      // Оплата
+                      Expanded(
+                        child: DropdownButton<String>(
+                          value: _selectedPaymentStatus ?? 'all',
+                          isExpanded: true,
+                          items: const [
+                            DropdownMenuItem(value: 'all', child: Text('Все оплаты')),
+                            DropdownMenuItem(value: 'paid', child: Text('Оплачено')),
+                            DropdownMenuItem(value: 'not_paid', child: Text('Не оплачено')),
+                            DropdownMenuItem(value: 'debt', child: Text('Долг')),
+                          ],
+                          onChanged: (value) {
+                            setState(() {
+                              _selectedPaymentStatus = value;
+                            });
+                            _filterInvoices();
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  // Дата
+                  Row(
+                    children: [
+                      Expanded(
+                        child: InkWell(
+                          onTap: () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: _dateFrom ?? DateTime.now(),
+                              firstDate: DateTime(2020),
+                              lastDate: DateTime.now(),
+                            );
+                            if (picked != null) {
+                              setState(() {
+                                _dateFrom = picked;
+                              });
+                              _filterInvoices();
+                            }
+                          },
+                          child: InputDecorator(
+                            decoration: const InputDecoration(
+                              labelText: 'Дата с',
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.date_range),
+                            ),
+                            child: Text(_dateFrom != null ? DateFormat('dd.MM.yyyy').format(_dateFrom!) : 'Не выбрано'),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: InkWell(
+                          onTap: () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: _dateTo ?? DateTime.now(),
+                              firstDate: DateTime(2020),
+                              lastDate: DateTime.now(),
+                            );
+                            if (picked != null) {
+                              setState(() {
+                                _dateTo = picked;
+                              });
+                              _filterInvoices();
+                            }
+                          },
+                          child: InputDecorator(
+                            decoration: const InputDecoration(
+                              labelText: 'Дата по',
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.date_range),
+                            ),
+                            child: Text(_dateTo != null ? DateFormat('dd.MM.yyyy').format(_dateTo!) : 'Не выбрано'),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
           // Список накладных
           Expanded(
             child: _isLoading
@@ -863,6 +1009,163 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
           ),
         ],
       ),
+    );
+  }
+} 
+
+// Вспомогательный диалог фильтров
+class _FilterDialog extends StatelessWidget {
+  final String searchQuery;
+  final ValueChanged<String> onSearchChanged;
+  final String selectedFilter;
+  final ValueChanged<String?> onFilterChanged;
+  final List<SalesRep> salesReps;
+  final String? selectedSalesRepId;
+  final ValueChanged<String?> onSalesRepChanged;
+  final String? selectedPaymentStatus;
+  final ValueChanged<String?> onPaymentStatusChanged;
+  final DateTime? dateFrom;
+  final DateTime? dateTo;
+  final ValueChanged<DateTime?> onDateFromChanged;
+  final ValueChanged<DateTime?> onDateToChanged;
+  final VoidCallback onApply;
+  const _FilterDialog({
+    required this.searchQuery,
+    required this.onSearchChanged,
+    required this.selectedFilter,
+    required this.onFilterChanged,
+    required this.salesReps,
+    required this.selectedSalesRepId,
+    required this.onSalesRepChanged,
+    required this.selectedPaymentStatus,
+    required this.onPaymentStatusChanged,
+    required this.dateFrom,
+    required this.dateTo,
+    required this.onDateFromChanged,
+    required this.onDateToChanged,
+    required this.onApply,
+  });
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Фильтры'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              decoration: const InputDecoration(
+                hintText: 'Поиск по точке, торговому или ID накладной',
+                prefixIcon: Icon(Icons.search),
+                border: OutlineInputBorder(),
+              ),
+              controller: TextEditingController(text: searchQuery),
+              onChanged: onSearchChanged,
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                const Text('Период: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                Expanded(
+                  child: DropdownButton<String>(
+                    value: selectedFilter,
+                    isExpanded: true,
+                    items: const [
+                      DropdownMenuItem(value: 'all', child: Text('Все')),
+                      DropdownMenuItem(value: 'today', child: Text('Сегодня')),
+                      DropdownMenuItem(value: 'week', child: Text('Неделя')),
+                      DropdownMenuItem(value: 'month', child: Text('Месяц')),
+                    ],
+                    onChanged: onFilterChanged,
+                  ),
+                ),
+              ],
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButton<String>(
+                    value: selectedSalesRepId ?? 'all',
+                    isExpanded: true,
+                    items: [
+                      const DropdownMenuItem(value: 'all', child: Text('Все торговые')),
+                      ...salesReps.map((rep) => DropdownMenuItem(value: rep.id, child: Text(rep.name))),
+                    ],
+                    onChanged: onSalesRepChanged,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: DropdownButton<String>(
+                    value: selectedPaymentStatus ?? 'all',
+                    isExpanded: true,
+                    items: const [
+                      DropdownMenuItem(value: 'all', child: Text('Все оплаты')),
+                      DropdownMenuItem(value: 'paid', child: Text('Оплачено')),
+                      DropdownMenuItem(value: 'not_paid', child: Text('Не оплачено')),
+                      DropdownMenuItem(value: 'debt', child: Text('Долг')),
+                    ],
+                    onChanged: onPaymentStatusChanged,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: InkWell(
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: dateFrom ?? DateTime.now(),
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime.now(),
+                      );
+                      if (picked != null) onDateFromChanged(picked);
+                    },
+                    child: InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Дата с',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.date_range),
+                      ),
+                      child: Text(dateFrom != null ? DateFormat('dd.MM.yyyy').format(dateFrom!) : 'Не выбрано'),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: InkWell(
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: dateTo ?? DateTime.now(),
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime.now(),
+                      );
+                      if (picked != null) onDateToChanged(picked);
+                    },
+                    child: InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Дата по',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.date_range),
+                      ),
+                      child: Text(dateTo != null ? DateFormat('dd.MM.yyyy').format(dateTo!) : 'Не выбрано'),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: Text('Отмена')),
+        ElevatedButton(onPressed: onApply, child: Text('Применить')),
+      ],
     );
   }
 } 
