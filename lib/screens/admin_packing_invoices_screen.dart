@@ -12,8 +12,7 @@ import '../models/outlet.dart';
 import '../services/auth_service.dart';
 import 'dart:typed_data';
 import 'package:flutter/services.dart';
-import 'package:excel/excel.dart';
-import 'package:file_saver/file_saver.dart';
+import '../services/excel_export_service.dart';
 import 'package:file_saver/file_saver.dart' as fs;
 
 class AdminPackingInvoicesScreen extends StatefulWidget {
@@ -32,7 +31,6 @@ class _AdminPackingInvoicesScreenState extends State<AdminPackingInvoicesScreen>
   List<Outlet> _outlets = [];
   bool _isLoading = true;
   String? _selectedSalesRepId;
-  String? _selectedPaymentStatus; // 'all', 'paid', 'not_paid', 'debt'
   DateTime? _dateFrom;
   DateTime? _dateTo;
   String? _errorMessage;
@@ -105,15 +103,7 @@ class _AdminPackingInvoicesScreenState extends State<AdminPackingInvoicesScreen>
     if (_selectedSalesRepId != null && _selectedSalesRepId != 'all') {
       filtered = filtered.where((inv) => inv.salesRepId == _selectedSalesRepId).toList();
     }
-    if (_selectedPaymentStatus != null && _selectedPaymentStatus != 'all') {
-      if (_selectedPaymentStatus == 'paid') {
-        filtered = filtered.where((inv) => inv.isPaid).toList();
-      } else if (_selectedPaymentStatus == 'not_paid') {
-        filtered = filtered.where((inv) => !inv.isPaid && !inv.isDebt).toList();
-      } else if (_selectedPaymentStatus == 'debt') {
-        filtered = filtered.where((inv) => inv.isDebt).toList();
-      }
-    }
+
     if (_dateFrom != null) {
       filtered = filtered.where((inv) => inv.date.toDate().isAfter(_dateFrom!) || inv.date.toDate().isAtSameMomentAs(_dateFrom!)).toList();
     }
@@ -147,7 +137,6 @@ class _AdminPackingInvoicesScreenState extends State<AdminPackingInvoicesScreen>
   void _clearFilters() {
     setState(() {
       _selectedSalesRepId = null;
-      _selectedPaymentStatus = null;
       _dateFrom = null;
       _dateTo = null;
       _filteredInvoices = _invoices;
@@ -298,130 +287,12 @@ class _AdminPackingInvoicesScreenState extends State<AdminPackingInvoicesScreen>
     final selected = _filteredInvoices.where((inv) => _selectedInvoiceIds.contains(inv.id)).toList();
     if (selected.isEmpty) return;
     
-    // Создаем Excel документ
-    final excel = Excel.createExcel();
-    final sheet = excel['Накладные на сборке'];
-    final cellStyle = CellStyle(
-      fontFamily: 'Times New Roman',
-      fontSize: 25,
-      horizontalAlign: HorizontalAlign.Center,
-      verticalAlign: VerticalAlign.Center,
+    await ExcelExportService.exportInvoicesToExcel(
+      invoices: selected,
+      sheetName: 'Накладные на сборке',
+      fileName: 'packing_invoices',
+      includePaymentInfo: false,
     );
-    int currentRow = 0;
-    
-    for (int invoiceIndex = 0; invoiceIndex < selected.length; invoiceIndex++) {
-      final invoice = selected[invoiceIndex];
-      
-      // Заголовок накладной (строка 1)
-      var cell1 = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: currentRow));
-      cell1.value = 'MELLO AQTOBE';
-      cell1.cellStyle = cellStyle;
-      var cell2 = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: currentRow));
-      cell2.value = DateFormat('dd.MM.yyyy').format(invoice.date.toDate());
-      cell2.cellStyle = cellStyle;
-      currentRow++;
-      
-      // Заголовки таблицы (строка 2)
-      for (int col = 0; col <= 5; col++) {
-        var cell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: currentRow));
-        switch (col) {
-          case 0: cell.value = '№'; break;
-          case 1: cell.value = 'Наименование товара'; break;
-          case 2: cell.value = 'Цена по прайсу'; break;
-          case 3: cell.value = 'Цена со скидкой'; break;
-          case 4: cell.value = 'Количество'; break;
-          case 5: cell.value = 'Итого'; break;
-        }
-        cell.cellStyle = cellStyle;
-      }
-      currentRow++;
-      
-      // Товары: сначала обычные, потом бонусные
-      final nonBonusItems = invoice.items.where((item) => !item.isBonus).toList();
-      final bonusItems = invoice.items.where((item) => item.isBonus).toList();
-      for (int itemIndex = 0; itemIndex < nonBonusItems.length; itemIndex++) {
-        final item = nonBonusItems[itemIndex];
-        for (int col = 0; col <= 5; col++) {
-          var cell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: currentRow));
-          switch (col) {
-            case 0: cell.value = itemIndex + 1; break;
-            case 1: cell.value = item.productName; break;
-            case 2: cell.value = item.price; break;
-            case 3: cell.value = item.price; break;
-            case 4: cell.value = item.quantity; break;
-            case 5: cell.value = item.totalPrice; break;
-          }
-          cell.cellStyle = cellStyle;
-        }
-        currentRow++;
-      }
-      for (int itemIndex = 0; itemIndex < bonusItems.length; itemIndex++) {
-        final item = bonusItems[itemIndex];
-        for (int col = 0; col <= 5; col++) {
-          var cell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: currentRow));
-          switch (col) {
-            case 0: cell.value = nonBonusItems.length + itemIndex + 1; break;
-            case 1: cell.value = 'Бонус ${item.productName}'; break;
-            case 2: cell.value = item.price; break;
-            case 3: cell.value = item.price; break;
-            case 4: cell.value = item.quantity; break;
-            case 5: cell.value = item.totalPrice; break;
-          }
-          cell.cellStyle = cellStyle;
-        }
-        currentRow++;
-      }
-      
-      // Итоги
-      final totalQuantity = invoice.items.fold<int>(0, (sum, item) => sum + item.quantity);
-      var cellItogo = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: currentRow));
-      cellItogo.value = 'Итого';
-      cellItogo.cellStyle = cellStyle;
-      var cellQty = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: currentRow));
-      cellQty.value = totalQuantity;
-      cellQty.cellStyle = cellStyle;
-      var cellSum = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: currentRow));
-      cellSum.value = invoice.totalAmount;
-      cellSum.cellStyle = cellStyle;
-      currentRow++;
-      
-      // Адрес доставки
-      var cellAddr = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: currentRow));
-      cellAddr.value = 'адрес доставки: ${invoice.outletName}, ${invoice.outletAddress}';
-      cellAddr.cellStyle = cellStyle;
-      var cellDebt = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: currentRow));
-      cellDebt.value = 'долг';
-      cellDebt.cellStyle = cellStyle;
-      var cellDebtSum = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: currentRow));
-      cellDebtSum.value = invoice.totalAmount;
-      cellDebtSum.cellStyle = cellStyle;
-      currentRow++;
-      
-      // Контактная информация
-      var cellContact = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: currentRow));
-      cellContact.value = '${invoice.salesRepName}';
-      cellContact.cellStyle = cellStyle;
-      currentRow++;
-      
-      // Пустая строка между накладными
-      if (invoiceIndex < selected.length - 1) {
-        currentRow++;
-      }
-    }
-    
-    
-    // Сохраняем файл
-    final bytes = excel.save();
-    if (bytes != null) {
-      await FileSaver.instance.saveFile(
-        name: 'packing_invoices',
-        bytes: Uint8List.fromList(bytes),
-        ext: 'xlsx',
-        mimeType: MimeType.other,
-        customMimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      );
-    }
-    // _clearSelection(); // если нет такой функции, убрать
   }
 
   @override
@@ -438,11 +309,10 @@ class _AdminPackingInvoicesScreenState extends State<AdminPackingInvoicesScreen>
                 await showDialog(
                   context: context,
                   builder: (context) => _FilterDialog(
+                    forSales: widget.forSales,
                     salesReps: _salesReps,
                     selectedSalesRepId: _selectedSalesRepId,
                     onSalesRepChanged: (val) => setState(() => _selectedSalesRepId = val),
-                    selectedPaymentStatus: _selectedPaymentStatus,
-                    onPaymentStatusChanged: (val) => setState(() => _selectedPaymentStatus = val),
                     dateFrom: _dateFrom,
                     dateTo: _dateTo,
                     onDateFromChanged: (val) => setState(() => _dateFrom = val),
@@ -685,11 +555,10 @@ class _AdminPackingInvoicesScreenState extends State<AdminPackingInvoicesScreen>
 
 // Вспомогательный диалог фильтров
 class _FilterDialog extends StatelessWidget {
+  final bool forSales;
   final List<SalesRep> salesReps;
   final String? selectedSalesRepId;
   final ValueChanged<String?> onSalesRepChanged;
-  final String? selectedPaymentStatus;
-  final ValueChanged<String?> onPaymentStatusChanged;
   final DateTime? dateFrom;
   final DateTime? dateTo;
   final ValueChanged<DateTime?> onDateFromChanged;
@@ -699,11 +568,10 @@ class _FilterDialog extends StatelessWidget {
   final VoidCallback onClear;
   final VoidCallback onApply;
   const _FilterDialog({
+    required this.forSales,
     required this.salesReps,
     required this.selectedSalesRepId,
     required this.onSalesRepChanged,
-    required this.selectedPaymentStatus,
-    required this.onPaymentStatusChanged,
     required this.dateFrom,
     required this.dateTo,
     required this.onDateFromChanged,
@@ -722,26 +590,17 @@ class _FilterDialog extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            DropdownButton<String>(
-              value: selectedSalesRepId,
-              hint: Text('Торговый'),
-              items: [
-                DropdownMenuItem(value: 'all', child: Text('Все')),
-                ...salesReps.map((rep) => DropdownMenuItem(value: rep.id, child: Text(rep.name)))
-              ],
-              onChanged: onSalesRepChanged,
-            ),
-            DropdownButton<String>(
-              value: selectedPaymentStatus,
-              hint: Text('Оплата'),
-              items: [
-                DropdownMenuItem(value: 'all', child: Text('Все')),
-                DropdownMenuItem(value: 'paid', child: Text('Оплачен')),
-                DropdownMenuItem(value: 'not_paid', child: Text('Не оплачен')),
-                DropdownMenuItem(value: 'debt', child: Text('Долг')),
-              ],
-              onChanged: onPaymentStatusChanged,
-            ),
+            if (!forSales) ...[
+              DropdownButton<String>(
+                value: selectedSalesRepId,
+                hint: Text('Торговый'),
+                items: [
+                  DropdownMenuItem(value: 'all', child: Text('Все')),
+                  ...salesReps.map((rep) => DropdownMenuItem(value: rep.id, child: Text(rep.name)))
+                ],
+                onChanged: onSalesRepChanged,
+              ),
+            ],
             OutlinedButton(
               onPressed: () async {
                 final picked = await showDatePicker(

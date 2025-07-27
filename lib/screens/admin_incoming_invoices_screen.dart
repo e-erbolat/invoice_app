@@ -10,10 +10,7 @@ import 'invoice_create_screen.dart';
 import 'package:share_plus/share_plus.dart';
 import '../models/outlet.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:excel/excel.dart' as excel;
-import 'package:excel/excel.dart' show MimeType;
-import 'package:file_saver/file_saver.dart';
-import 'dart:typed_data';
+import '../services/excel_export_service.dart';
 
 class AdminIncomingInvoicesScreen extends StatefulWidget {
   final bool forSales;
@@ -31,7 +28,6 @@ class _AdminIncomingInvoicesScreenState extends State<AdminIncomingInvoicesScree
   List<Outlet> _outlets = [];
   bool _isLoading = true;
   String? _selectedSalesRepId;
-  String? _selectedPaymentStatus; // 'all', 'paid', 'not_paid', 'debt'
   DateTime? _dateFrom;
   DateTime? _dateTo;
   String? _errorMessage;
@@ -88,16 +84,7 @@ class _AdminIncomingInvoicesScreenState extends State<AdminIncomingInvoicesScree
       filtered = filtered.where((inv) => inv.salesRepId == _selectedSalesRepId).toList();
       print('[DEBUG] После фильтрации по salesRepId ($_selectedSalesRepId): ${filtered.length}');
     }
-    if (_selectedPaymentStatus != null && _selectedPaymentStatus != 'all') {
-      if (_selectedPaymentStatus == 'paid') {
-        filtered = filtered.where((inv) => inv.isPaid).toList();
-      } else if (_selectedPaymentStatus == 'not_paid') {
-        filtered = filtered.where((inv) => !inv.isPaid && !inv.isDebt).toList();
-      } else if (_selectedPaymentStatus == 'debt') {
-        filtered = filtered.where((inv) => inv.isDebt).toList();
-      }
-      print('[DEBUG] После фильтрации по оплате ($_selectedPaymentStatus): ${filtered.length}');
-    }
+
     if (_dateFrom != null) {
       filtered = filtered.where((inv) => inv.date.toDate().isAfter(_dateFrom!) || inv.date.toDate().isAtSameMomentAs(_dateFrom!)).toList();
       print('[DEBUG] После фильтрации по дате с ($_dateFrom): ${filtered.length}');
@@ -137,7 +124,6 @@ class _AdminIncomingInvoicesScreenState extends State<AdminIncomingInvoicesScree
   void _clearFilters() {
     setState(() {
       _selectedSalesRepId = null;
-      _selectedPaymentStatus = null;
       _dateFrom = null;
       _dateTo = null;
       _filteredInvoices = _invoices;
@@ -171,63 +157,12 @@ class _AdminIncomingInvoicesScreenState extends State<AdminIncomingInvoicesScree
   }
 
   void _exportInvoicesToExcel() async {
-    if (_filteredInvoices.isEmpty) return;
-    final excelDoc = excel.Excel.createExcel();
-    final sheet = excelDoc['Входящие накладные'];
-    int currentRow = 0;
-    // Заголовки
-    final headers = [
-      '№', 'Дата', 'Номер', 'Точка', 'Адрес', 'Торговый', 'Сумма', 'Статус', 'Оплата'
-    ];
-    for (int col = 0; col < headers.length; col++) {
-      sheet.cell(excel.CellIndex.indexByColumnRow(columnIndex: col, rowIndex: currentRow)).value = headers[col];
-    }
-    currentRow++;
-    for (int i = 0; i < _filteredInvoices.length; i++) {
-      final inv = _filteredInvoices[i];
-      final date = inv.date.toDate();
-      final dateStr = DateFormat('dd.MM.yyyy').format(date);
-      final dateNum = DateFormat('ddMMyyyy').format(date);
-      String suffix = '';
-      final idMatch = RegExp(r'(\d{4})$').firstMatch(inv.id);
-      if (idMatch != null) {
-        suffix = idMatch.group(1)!;
-      } else {
-        suffix = (i + 1).toString().padLeft(4, '0');
-      }
-      final customNumber = '$dateNum-$suffix';
-      final status = InvoiceStatus.getName(inv.status);
-      final payment = inv.isPaid
-          ? 'Оплачен (${inv.paymentType ?? ''})'
-          : inv.isDebt
-              ? 'Долг'
-              : 'Не оплачен';
-      final row = [
-        i + 1,
-        dateStr,
-        customNumber,
-        inv.outletName,
-        inv.outletAddress,
-        inv.salesRepName,
-        inv.totalAmount,
-        status,
-        payment,
-      ];
-      for (int col = 0; col < row.length; col++) {
-        sheet.cell(excel.CellIndex.indexByColumnRow(columnIndex: col, rowIndex: currentRow)).value = row[col];
-      }
-      currentRow++;
-    }
-    final bytes = excelDoc.save();
-    if (bytes != null) {
-      await FileSaver.instance.saveFile(
-        name: 'incoming_invoices',
-        bytes: Uint8List.fromList(bytes),
-        ext: 'xlsx',
-        mimeType: MimeType.other,
-        customMimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      );
-    }
+    await ExcelExportService.exportInvoicesToExcel(
+      invoices: _filteredInvoices,
+      sheetName: 'Входящие накладные',
+      fileName: 'incoming_invoices',
+      includePaymentInfo: false,
+    );
   }
 
   @override
@@ -249,11 +184,10 @@ class _AdminIncomingInvoicesScreenState extends State<AdminIncomingInvoicesScree
                 await showDialog(
                   context: context,
                   builder: (context) => _FilterDialog(
+                    forSales: widget.forSales,
                     salesReps: _salesReps,
                     selectedSalesRepId: _selectedSalesRepId,
                     onSalesRepChanged: (val) => setState(() => _selectedSalesRepId = val),
-                    selectedPaymentStatus: _selectedPaymentStatus,
-                    onPaymentStatusChanged: (val) => setState(() => _selectedPaymentStatus = val),
                     dateFrom: _dateFrom,
                     dateTo: _dateTo,
                     onDateFromChanged: (val) => setState(() => _dateFrom = val),
@@ -303,32 +237,20 @@ class _AdminIncomingInvoicesScreenState extends State<AdminIncomingInvoicesScree
                             spacing: 8,
                             runSpacing: 8,
                             children: [
-                              DropdownButton<String>(
-                                value: _selectedSalesRepId,
-                                hint: Text('Торговый'),
-                                items: [
-                                  DropdownMenuItem(value: 'all', child: Text('Все')),
-                                  ..._salesReps.map((rep) => DropdownMenuItem(value: rep.id, child: Text(rep.name)))
-                                ],
-                                onChanged: (val) {
-                                  setState(() { _selectedSalesRepId = val; });
-                                  _filterInvoices();
-                                },
-                              ),
-                              DropdownButton<String>(
-                                value: _selectedPaymentStatus,
-                                hint: Text('Оплата'),
-                                items: [
-                                  DropdownMenuItem(value: 'all', child: Text('Все')),
-                                  DropdownMenuItem(value: 'paid', child: Text('Оплачен')),
-                                  DropdownMenuItem(value: 'not_paid', child: Text('Не оплачен')),
-                                  DropdownMenuItem(value: 'debt', child: Text('Долг')),
-                                ],
-                                onChanged: (val) {
-                                  setState(() { _selectedPaymentStatus = val; });
-                                  _filterInvoices();
-                                },
-                              ),
+                              if (!widget.forSales) ...[
+                                DropdownButton<String>(
+                                  value: _selectedSalesRepId,
+                                  hint: Text('Торговый'),
+                                  items: [
+                                    DropdownMenuItem(value: 'all', child: Text('Все')),
+                                    ..._salesReps.map((rep) => DropdownMenuItem(value: rep.id, child: Text(rep.name)))
+                                  ],
+                                  onChanged: (val) {
+                                    setState(() { _selectedSalesRepId = val; });
+                                    _filterInvoices();
+                                  },
+                                ),
+                              ],
                               OutlinedButton(
                                 onPressed: () => _selectDate(context, true),
                                 child: Text(_dateFrom == null ? 'С даты' : DateFormat('dd.MM.yyyy').format(_dateFrom!)),
@@ -702,11 +624,10 @@ class _AdminIncomingInvoicesScreenState extends State<AdminIncomingInvoicesScree
 
 // Вспомогательный диалог фильтров
 class _FilterDialog extends StatelessWidget {
+  final bool forSales;
   final List<SalesRep> salesReps;
   final String? selectedSalesRepId;
   final ValueChanged<String?> onSalesRepChanged;
-  final String? selectedPaymentStatus;
-  final ValueChanged<String?> onPaymentStatusChanged;
   final DateTime? dateFrom;
   final DateTime? dateTo;
   final ValueChanged<DateTime?> onDateFromChanged;
@@ -716,11 +637,10 @@ class _FilterDialog extends StatelessWidget {
   final VoidCallback onClear;
   final VoidCallback onApply;
   const _FilterDialog({
+    required this.forSales,
     required this.salesReps,
     required this.selectedSalesRepId,
     required this.onSalesRepChanged,
-    required this.selectedPaymentStatus,
-    required this.onPaymentStatusChanged,
     required this.dateFrom,
     required this.dateTo,
     required this.onDateFromChanged,
@@ -739,26 +659,17 @@ class _FilterDialog extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            DropdownButton<String>(
-              value: selectedSalesRepId,
-              hint: Text('Торговый'),
-              items: [
-                DropdownMenuItem(value: 'all', child: Text('Все')),
-                ...salesReps.map((rep) => DropdownMenuItem(value: rep.id, child: Text(rep.name)))
-              ],
-              onChanged: onSalesRepChanged,
-            ),
-            DropdownButton<String>(
-              value: selectedPaymentStatus,
-              hint: Text('Оплата'),
-              items: [
-                DropdownMenuItem(value: 'all', child: Text('Все')),
-                DropdownMenuItem(value: 'paid', child: Text('Оплачен')),
-                DropdownMenuItem(value: 'not_paid', child: Text('Не оплачен')),
-                DropdownMenuItem(value: 'debt', child: Text('Долг')),
-              ],
-              onChanged: onPaymentStatusChanged,
-            ),
+            if (!forSales) ...[
+              DropdownButton<String>(
+                value: selectedSalesRepId,
+                hint: Text('Торговый'),
+                items: [
+                  DropdownMenuItem(value: 'all', child: Text('Все')),
+                  ...salesReps.map((rep) => DropdownMenuItem(value: rep.id, child: Text(rep.name)))
+                ],
+                onChanged: onSalesRepChanged,
+              ),
+            ],
             OutlinedButton(
               onPressed: () async {
                 final picked = await showDatePicker(
