@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/invoice.dart';
 import '../models/invoice_item.dart';
+import '../utils/validation_utils.dart';
 
 class InvoiceService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -8,19 +9,9 @@ class InvoiceService {
   // Создать новую накладную
   Future<void> createInvoice(Invoice invoice) async {
     try {
-      print('[InvoiceService] Создание накладной: ${invoice.id}');
-      print('[InvoiceService] Статус: ${invoice.status}');
-      print('[InvoiceService] SalesRepId: ${invoice.salesRepId}');
-      print('[InvoiceService] SalesRepName: ${invoice.salesRepName}');
-      print('[InvoiceService] Количество товаров: ${invoice.items.length}');
-      for (int i = 0; i < invoice.items.length; i++) {
-        final item = invoice.items[i];
-        print('[InvoiceService] Товар $i: ${item.productName}');
-        print('[InvoiceService]   - Цена по прайсу: ${item.originalPrice}');
-        print('[InvoiceService]   - Фактическая цена: ${item.price}');
-        print('[InvoiceService]   - Количество: ${item.quantity}');
-        print('[InvoiceService]   - Итого: ${item.totalPrice}');
-      }
+      // Валидация данных
+      _validateInvoice(invoice);
+      
       
       await _firestore.collection('invoices').doc(invoice.id).set({
         'id': invoice.id,
@@ -53,6 +44,28 @@ class InvoiceService {
     } catch (e) {
       print('[InvoiceService] Ошибка сохранения накладной: $e');
       throw Exception('Ошибка создания накладной: $e');
+    }
+  }
+
+  /// Валидация накладной
+  void _validateInvoice(Invoice invoice) {
+    if (invoice.items.isEmpty) {
+      throw ArgumentError('Накладная должна содержать хотя бы один товар');
+    }
+    
+    for (int i = 0; i < invoice.items.length; i++) {
+      final item = invoice.items[i];
+      final error = ValidationUtils.getValidationError(
+        price: item.price,
+        originalPrice: item.originalPrice,
+        quantity: item.quantity,
+        productId: item.productId,
+        productName: item.productName,
+      );
+      
+      if (error != null) {
+        throw ArgumentError('Ошибка валидации товара $i (${item.productName}): $error');
+      }
     }
   }
 
@@ -263,14 +276,6 @@ class InvoiceService {
   // Обновить накладную полностью
   Future<void> updateInvoice(Invoice invoice) async {
     try {
-      print('[InvoiceService] Обновление накладной: ${invoice.id}');
-      print('[InvoiceService] Количество товаров: ${invoice.items.length}');
-      for (int i = 0; i < invoice.items.length; i++) {
-        final item = invoice.items[i];
-        print('[InvoiceService] Товар $i: ${item.productName}');
-        print('[InvoiceService]   - Цена по прайсу: ${item.originalPrice}');
-        print('[InvoiceService]   - Фактическая цена: ${item.price}');
-      }
       await _firestore.collection('invoices').doc(invoice.id).update({
         'outletId': invoice.outletId,
         'outletName': invoice.outletName,
