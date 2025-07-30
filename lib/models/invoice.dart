@@ -41,6 +41,7 @@ class Invoice {
   final bool isDebt;
   final bool acceptedByAdmin;
   final bool acceptedBySuperAdmin;
+  final Timestamp? acceptedAt; // Дата принятия оплаты (перехода в архив)
   final double bankAmount;
   final double cashAmount;
 
@@ -60,6 +61,7 @@ class Invoice {
     this.isDebt = false,
     this.acceptedByAdmin = false,
     this.acceptedBySuperAdmin = false,
+    this.acceptedAt,
     this.bankAmount = 0.0,
     this.cashAmount = 0.0,
   });
@@ -80,6 +82,7 @@ class Invoice {
     'isDebt': isDebt,
     'acceptedByAdmin': acceptedByAdmin,
     'acceptedBySuperAdmin': acceptedBySuperAdmin,
+    'acceptedAt': acceptedAt,
     'bankAmount': bankAmount,
     'cashAmount': cashAmount,
   };
@@ -100,6 +103,7 @@ class Invoice {
     isDebt: map['isDebt'] ?? false,
     acceptedByAdmin: map['acceptedByAdmin'] ?? false,
     acceptedBySuperAdmin: map['acceptedBySuperAdmin'] ?? false,
+    acceptedAt: map['acceptedAt'],
     bankAmount: (map['bankAmount'] ?? 0.0) is num ? (map['bankAmount'] ?? 0.0).toDouble() : 0.0,
     cashAmount: (map['cashAmount'] ?? 0.0) is num ? (map['cashAmount'] ?? 0.0).toDouble() : 0.0,
   );
@@ -120,6 +124,7 @@ class Invoice {
     bool? isDebt,
     bool? acceptedByAdmin,
     bool? acceptedBySuperAdmin,
+    Timestamp? acceptedAt,
     double? bankAmount,
     double? cashAmount,
   }) => Invoice(
@@ -138,6 +143,7 @@ class Invoice {
     isDebt: isDebt ?? this.isDebt,
     acceptedByAdmin: acceptedByAdmin ?? this.acceptedByAdmin,
     acceptedBySuperAdmin: acceptedBySuperAdmin ?? this.acceptedBySuperAdmin,
+    acceptedAt: acceptedAt ?? this.acceptedAt,
     bankAmount: bankAmount ?? this.bankAmount,
     cashAmount: cashAmount ?? this.cashAmount,
   );

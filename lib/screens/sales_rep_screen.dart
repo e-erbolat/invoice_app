@@ -169,6 +169,11 @@ class _SalesRepScreenState extends State<SalesRepScreen> {
                 tooltip: 'Обновить',
                 onPressed: _loadSalesReps,
               ),
+              IconButton(
+                icon: const Icon(Icons.add),
+                tooltip: 'Добавить торгового представителя',
+                onPressed: () => _showAddEditDialog(),
+              ),
             ],
           ),
         ),

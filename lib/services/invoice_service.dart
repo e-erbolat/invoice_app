@@ -27,6 +27,7 @@ class InvoiceService {
         'isDebt': invoice.isDebt,
         'acceptedByAdmin': invoice.acceptedByAdmin,
         'acceptedBySuperAdmin': invoice.acceptedBySuperAdmin,
+        'acceptedAt': invoice.acceptedAt,
         'items': invoice.items.map((item) => {
           'productId': item.productId,
           'productName': item.productName,
@@ -69,6 +70,7 @@ class InvoiceService {
           isDebt: data['isDebt'] ?? false,
           acceptedByAdmin: data['acceptedByAdmin'] ?? false,
           acceptedBySuperAdmin: data['acceptedBySuperAdmin'] ?? false,
+          acceptedAt: data['acceptedAt'],
           items: (data['items'] as List).map((item) => InvoiceItem(
             productId: item['productId'],
             productName: item['productName'],
@@ -110,6 +112,7 @@ class InvoiceService {
           isDebt: data['isDebt'] ?? false,
           acceptedByAdmin: data['acceptedByAdmin'] ?? false,
           acceptedBySuperAdmin: data['acceptedBySuperAdmin'] ?? false,
+          acceptedAt: data['acceptedAt'],
           items: (data['items'] as List).map((item) => InvoiceItem(
             productId: item['productId'],
             productName: item['productName'],
@@ -256,6 +259,7 @@ class InvoiceService {
         'isDebt': invoice.isDebt,
         'acceptedByAdmin': invoice.acceptedByAdmin,
         'acceptedBySuperAdmin': invoice.acceptedBySuperAdmin,
+        'acceptedAt': invoice.acceptedAt,
         'items': invoice.items.map((item) => {
           'productId': item.productId,
           'productName': item.productName,
@@ -274,7 +278,14 @@ class InvoiceService {
   // Обновить только статус накладной по id
   Future<void> updateInvoiceStatus(String invoiceId, int status) async {
     try {
-      await _firestore.collection('invoices').doc(invoiceId).update({'status': status});
+      final updateData = <String, dynamic>{'status': status};
+      
+      // Если статус меняется на архив, сохраняем дату принятия
+      if (status == InvoiceStatus.archive) {
+        updateData['acceptedAt'] = Timestamp.now();
+      }
+      
+      await _firestore.collection('invoices').doc(invoiceId).update(updateData);
     } catch (e) {
       throw Exception('Ошибка обновления статуса накладной: $e');
     }
@@ -292,6 +303,17 @@ class InvoiceService {
       });
     } catch (e) {
       throw Exception('Ошибка обновления оплаты накладной: $e');
+    }
+  }
+
+  // Обновить статус принятия админом
+  Future<void> updateInvoiceAcceptedByAdmin(String invoiceId, bool acceptedByAdmin) async {
+    try {
+      await _firestore.collection('invoices').doc(invoiceId).update({
+        'acceptedByAdmin': acceptedByAdmin,
+      });
+    } catch (e) {
+      throw Exception('Ошибка обновления статуса принятия админом: $e');
     }
   }
 

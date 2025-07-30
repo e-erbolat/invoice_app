@@ -135,13 +135,28 @@ class _AdminDeliveryInvoicesScreenState extends State<AdminDeliveryInvoicesScree
     }
   }
 
+  bool _isExporting = false;
+
   void _exportInvoicesToExcel() async {
-    await ExcelExportService.exportInvoicesToExcel(
-      invoices: _filteredInvoices,
-      sheetName: 'Накладные на доставке',
-      fileName: 'delivery_invoices',
-      includePaymentInfo: false,
-    );
+    if (_isExporting) return; // Защита от множественных нажатий
+    
+    setState(() {
+      _isExporting = true;
+    });
+    
+    try {
+      await ExcelExportService.exportInvoicesToExcel(
+        invoices: _filteredInvoices,
+        sheetName: 'Накладные на доставке',
+        fileName: 'delivery_invoices',
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isExporting = false;
+        });
+      }
+    }
   }
 
   @override
@@ -151,9 +166,15 @@ class _AdminDeliveryInvoicesScreenState extends State<AdminDeliveryInvoicesScree
         title: Text('Накладные на доставке'),
         actions: [
           IconButton(
-            icon: Icon(kIsWeb ? Icons.table_chart : Icons.share),
-            tooltip: kIsWeb ? 'Экспорт в Excel' : 'Поделиться Excel',
-            onPressed: _exportInvoicesToExcel,
+            icon: _isExporting 
+              ? SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : Icon(Icons.share),
+            tooltip: 'Поделиться Excel',
+            onPressed: _isExporting ? null : _exportInvoicesToExcel,
           ),
           if (!kIsWeb)
             IconButton(
@@ -228,82 +249,136 @@ class _AdminDeliveryInvoicesScreenState extends State<AdminDeliveryInvoicesScree
                       : ListView.builder(
                           itemCount: _filteredInvoices.length,
                           itemBuilder: (context, index) {
-                            final invoice = _filteredInvoices[index];
-                            final date = invoice.date.toDate();
-                            final dateStr = DateFormat('dd.MM.yyyy').format(date);
-                            final dateNum = DateFormat('ddMMyyyy').format(date);
-                            String suffix = '';
-                            final idMatch = RegExp(r'(\d{4})$').firstMatch(invoice.id);
-                            if (idMatch != null) {
-                              suffix = idMatch.group(1)!;
-                            } else {
-                              suffix = (index + 1).toString().padLeft(4, '0');
-                            }
-                            final customNumber = '$dateNum-$suffix';
-                            final bgColor = index % 2 == 0 ? Colors.white : Colors.grey.shade100;
-                            return Container(
-                              color: bgColor,
-                              child: ListTile(
-                                leading: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Text('${index + 1}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                                    Text(dateStr, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                                  ],
-                                ),
-                                title: Text('Накладная $customNumber', style: const TextStyle(fontWeight: FontWeight.bold)),
-                                subtitle: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text('Точка: ${invoice.outletName}'),
-                                    if (invoice.outletAddress != null && invoice.outletAddress.isNotEmpty)
-                                      Text('Адрес: ${invoice.outletAddress}'),
-                                    Text('Торговый: ${invoice.salesRepName}'),
-                                  ],
-                                ),
-                                trailing: !widget.forSales
-                                    ? ElevatedButton(
-                                        child: Text('Доставлен'),
-                                        onPressed: () async {
-                                          final confirmed = await showDialog<bool>(
-                                            context: context,
-                                            builder: (context) => AlertDialog(
-                                              title: Text('Подтвердите действие'),
-                                              content: Text('Вы уверены, что хотите отметить накладную $customNumber как доставленную?'),
-                                              actions: [
-                                                TextButton(
-                                                  onPressed: () => Navigator.pop(context, false),
-                                                  child: Text('Отмена'),
-                                                ),
-                                                ElevatedButton(
-                                                  onPressed: () => Navigator.pop(context, true),
-                                                  child: Text('Доставлен'),
-                                                ),
-                                              ],
-                                            ),
-                                          );
-                                          if (confirmed == true) {
-                                            await _invoiceService.updateInvoiceStatus(invoice.id, InvoiceStatus.delivered);
-                                            _loadData();
-                                          }
-                                        },
-                                      )
-                                    : null,
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => InvoiceScreen(invoiceId: invoice.id),
+                            // Добавляем общую сумму в начале для мобильных
+                            if (index == 0 && !kIsWeb) {
+                              final totalSum = _filteredInvoices.fold<double>(
+                                0.0, (sum, inv) => sum + inv.totalAmount
+                              );
+                              return Column(
+                                children: [
+                                  Container(
+                                    margin: EdgeInsets.all(16),
+                                    padding: EdgeInsets.all(16),
+                                    decoration: BoxDecoration(
+                                      color: Colors.deepPurple.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: Colors.deepPurple),
                                     ),
-                                  );
-                                },
-                              ),
-                            );
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          'Общая сумма:',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.deepPurple,
+                                          ),
+                                        ),
+                                        Text(
+                                          '${totalSum.toStringAsFixed(2)} ₸',
+                                          style: TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.deepPurple,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  _buildInvoiceItem(_filteredInvoices[index], index),
+                                ],
+                              );
+                            }
+                            
+                            return _buildInvoiceItem(_filteredInvoices[index], index);
                           },
                         ),
                 ),
               ],
             ),
+    );
+  }
+
+  Widget _buildInvoiceItem(Invoice invoice, int index) {
+    final date = invoice.date.toDate();
+    final dateStr = DateFormat('dd.MM.yyyy').format(date);
+    final dateNum = DateFormat('ddMMyyyy').format(date);
+    String suffix = '';
+    final idMatch = RegExp(r'(\d{4})$').firstMatch(invoice.id);
+    if (idMatch != null) {
+      suffix = idMatch.group(1)!;
+    } else {
+      suffix = (index + 1).toString().padLeft(4, '0');
+    }
+    final customNumber = '$dateNum-$suffix';
+    final bgColor = index % 2 == 0 ? Colors.white : Colors.grey.shade100;
+    return Container(
+      color: bgColor,
+      child: ListTile(
+        leading: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text('${index + 1}', style: const TextStyle(fontWeight: FontWeight.bold)),
+            Text(dateStr, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+          ],
+        ),
+        title: Text('Накладная $customNumber', style: const TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Точка: ${invoice.outletName}'),
+            if (invoice.outletAddress != null && invoice.outletAddress.isNotEmpty)
+              Text('Адрес: ${invoice.outletAddress}'),
+            Text('Торговый: ${invoice.salesRepName}'),
+            const SizedBox(height: 4),
+            Text(
+              'Сумма: ${invoice.totalAmount.toStringAsFixed(2)} ₸',
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+                color: Colors.blue,
+              ),
+            ),
+          ],
+        ),
+        trailing: !widget.forSales
+            ? ElevatedButton(
+                child: Text('Доставлен'),
+                onPressed: () async {
+                  final confirmed = await showDialog<bool>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: Text('Подтвердите действие'),
+                      content: Text('Вы уверены, что хотите отметить накладную $customNumber как доставленную?'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, false),
+                          child: Text('Отмена'),
+                        ),
+                        ElevatedButton(
+                          onPressed: () => Navigator.pop(context, true),
+                          child: Text('Доставлен'),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (confirmed == true) {
+                    await _invoiceService.updateInvoiceStatus(invoice.id, InvoiceStatus.delivered);
+                    _loadData();
+                  }
+                },
+              )
+            : null,
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => InvoiceScreen(invoiceId: invoice.id),
+            ),
+          );
+        },
+      ),
     );
   }
 }

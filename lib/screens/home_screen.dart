@@ -232,6 +232,15 @@ class _HomeScreenState extends State<HomeScreen> {
                       fontSize: 14,
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: _loadCashAmount,
+                    child: Icon(
+                      Icons.refresh,
+                      color: Colors.green,
+                      size: 16,
+                    ),
+                  ),
                 ],
               ),
             ),

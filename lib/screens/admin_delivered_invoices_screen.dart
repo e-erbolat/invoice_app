@@ -29,6 +29,8 @@ class _AdminDeliveredInvoicesScreenState extends State<AdminDeliveredInvoicesScr
   DateTime? _dateFrom;
   DateTime? _dateTo;
   String? _errorMessage;
+  String _sortField = 'date'; // 'date', 'name', 'amount'
+  bool _sortAscending = false; // false = новые сначала
 
   // Локальное состояние для сумм оплаты по каждой накладной
   final Map<String, double> _bankAmounts = {};
@@ -105,6 +107,24 @@ class _AdminDeliveredInvoicesScreenState extends State<AdminDeliveredInvoicesScr
     if (_dateTo != null) {
       filtered = filtered.where((inv) => inv.date.toDate().isBefore(_dateTo!.add(const Duration(days: 1)))).toList();
     }
+    
+    // Сортировка
+    filtered.sort((a, b) {
+      int comparison = 0;
+      switch (_sortField) {
+        case 'date':
+          comparison = a.date.compareTo(b.date);
+          break;
+        case 'name':
+          comparison = a.outletName.compareTo(b.outletName);
+          break;
+        case 'amount':
+          comparison = a.totalAmount.compareTo(b.totalAmount);
+          break;
+      }
+      return _sortAscending ? comparison : -comparison;
+    });
+    
     setState(() {
       _filteredInvoices = filtered;
     });
@@ -134,8 +154,24 @@ class _AdminDeliveredInvoicesScreenState extends State<AdminDeliveredInvoicesScr
       _selectedSalesRepId = null;
       _dateFrom = null;
       _dateTo = null;
+      _sortField = 'date';
+      _sortAscending = false;
       _filteredInvoices = _invoices;
     });
+    _filterInvoices();
+  }
+
+  String _getSortFieldText() {
+    switch (_sortField) {
+      case 'date':
+        return 'Дата';
+      case 'name':
+        return 'Название';
+      case 'amount':
+        return 'Сумма';
+      default:
+        return 'Сортировать по';
+    }
   }
 
   // Инициализация контроллеров для накладной
@@ -217,7 +253,7 @@ class _AdminDeliveredInvoicesScreenState extends State<AdminDeliveredInvoicesScr
     double bankAmount = invoice.totalAmount;
     double cashAmount = 0.0;
     String comment = '';
-    bool isPaid = invoice.isPaid;
+    bool isPaid = true; // При принятии оплаты всегда устанавливаем в true
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -289,11 +325,6 @@ class _AdminDeliveredInvoicesScreenState extends State<AdminDeliveredInvoicesScr
                   decoration: InputDecoration(labelText: 'Комментарий'),
                   onChanged: (val) => comment = val,
                 ),
-                SwitchListTile(
-                  title: Text('Оплачено'),
-                  value: isPaid,
-                  onChanged: (val) => setState(() { isPaid = val; }),
-                ),
               ],
             ),
             actions: [
@@ -302,7 +333,7 @@ class _AdminDeliveredInvoicesScreenState extends State<AdminDeliveredInvoicesScr
                 child: Text('Отмена'),
               ),
               ElevatedButton(
-                onPressed: isSumValid && isPaid
+                onPressed: isSumValid
                     ? () async {
                         Navigator.pop(context);
                         // paymentType: 'bank', 'cash', 'mixed'
@@ -313,9 +344,8 @@ class _AdminDeliveredInvoicesScreenState extends State<AdminDeliveredInvoicesScr
                                 : 'cash';
                         await _invoiceService.updateInvoicePayment(invoice.id, isPaid, paymentType, comment,
                             bankAmount: bankAmount, cashAmount: cashAmount);
-                        if (isPaid) {
-                          await _invoiceService.updateInvoiceStatus(invoice.id, InvoiceStatus.delivered);
-                        }
+                        await _invoiceService.updateInvoiceStatus(invoice.id, InvoiceStatus.paymentChecked);
+                        await _invoiceService.updateInvoiceAcceptedByAdmin(invoice.id, true);
                         _loadData();
                       }
                     : null,
@@ -328,13 +358,28 @@ class _AdminDeliveredInvoicesScreenState extends State<AdminDeliveredInvoicesScr
     );
   }
 
+  bool _isExporting = false;
+
   void _exportInvoicesToExcel() async {
-    await ExcelExportService.exportInvoicesToExcel(
-      invoices: _filteredInvoices,
-      sheetName: 'Доставленные накладные',
-      fileName: 'delivered_invoices',
-      includePaymentInfo: true,
-    );
+    if (_isExporting) return; // Защита от множественных нажатий
+    
+    setState(() {
+      _isExporting = true;
+    });
+    
+    try {
+      await ExcelExportService.exportInvoicesToExcel(
+        invoices: _filteredInvoices,
+        sheetName: 'Доставленные накладные',
+        fileName: 'delivered_invoices',
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isExporting = false;
+        });
+      }
+    }
   }
 
   @override
@@ -344,9 +389,15 @@ class _AdminDeliveredInvoicesScreenState extends State<AdminDeliveredInvoicesScr
         title: Text('Доставленные накладные'),
         actions: [
           IconButton(
-            icon: Icon(kIsWeb ? Icons.table_chart : Icons.share),
-            tooltip: kIsWeb ? 'Экспорт в Excel' : 'Поделиться Excel',
-            onPressed: _exportInvoicesToExcel,
+            icon: _isExporting 
+              ? SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : Icon(Icons.share),
+            tooltip: 'Поделиться Excel',
+            onPressed: _isExporting ? null : _exportInvoicesToExcel,
           ),
           if (!kIsWeb)
             IconButton(
@@ -364,6 +415,14 @@ class _AdminDeliveredInvoicesScreenState extends State<AdminDeliveredInvoicesScr
                     dateTo: _dateTo,
                     onDateFromChanged: (val) => setState(() => _dateFrom = val),
                     onDateToChanged: (val) => setState(() => _dateTo = val),
+                    sortField: _sortField,
+                    sortAscending: _sortAscending,
+                    onSortChanged: (field, ascending) {
+                      setState(() {
+                        _sortField = field;
+                        _sortAscending = ascending;
+                      });
+                    },
                     onClear: _clearFilters,
                     onApply: () {
                       _filterInvoices();
@@ -415,6 +474,88 @@ class _AdminDeliveredInvoicesScreenState extends State<AdminDeliveredInvoicesScr
                                     onPressed: () => _selectDate(context, false),
                                     child: Text(_dateTo == null ? 'По дату' : DateFormat('dd.MM.yyyy').format(_dateTo!)),
                                   ),
+                                  // Кнопка сортировки с выпадающим списком
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      OutlinedButton.icon(
+                                        onPressed: null, // Кнопка неактивна, только для отображения
+                                        icon: Icon(Icons.sort),
+                                        label: _sortField == 'date' || _sortField == 'name' || _sortField == 'amount'
+                                          ? Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Text(_getSortFieldText()),
+                                                SizedBox(width: 4),
+                                                Icon(_sortAscending ? Icons.arrow_upward : Icons.arrow_downward),
+                                              ],
+                                            )
+                                          : Text('Сортировать по'),
+                                        style: OutlinedButton.styleFrom(
+                                          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                        ),
+                                      ),
+                                      PopupMenuButton<String>(
+                                        icon: Icon(Icons.arrow_drop_down),
+                                    onSelected: (value) {
+                                      setState(() {
+                                        if (value == 'date') {
+                                          _sortField = 'date';
+                                          _sortAscending = !_sortAscending;
+                                        } else if (value == 'name') {
+                                          _sortField = 'name';
+                                          _sortAscending = !_sortAscending;
+                                        } else if (value == 'amount') {
+                                          _sortField = 'amount';
+                                          _sortAscending = !_sortAscending;
+                                        }
+                                      });
+                                      _filterInvoices();
+                                    },
+                                    itemBuilder: (context) => [
+                                      PopupMenuItem(
+                                        value: 'date',
+                                        child: Row(
+                                          children: [
+                                            Text('Дата'),
+                                            Spacer(),
+                                            Icon(_sortField == 'date' 
+                                              ? (_sortAscending ? Icons.arrow_upward : Icons.arrow_downward)
+                                              : Icons.unfold_more
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      PopupMenuItem(
+                                        value: 'name',
+                                        child: Row(
+                                          children: [
+                                            Text('Название'),
+                                            Spacer(),
+                                            Icon(_sortField == 'name' 
+                                              ? (_sortAscending ? Icons.arrow_upward : Icons.arrow_downward)
+                                              : Icons.unfold_more
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      PopupMenuItem(
+                                        value: 'amount',
+                                        child: Row(
+                                          children: [
+                                            Text('Сумма'),
+                                            Spacer(),
+                                            Icon(_sortField == 'amount' 
+                                              ? (_sortAscending ? Icons.arrow_upward : Icons.arrow_downward)
+                                              : Icons.unfold_more
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                    ],
+                                  ),
                                 ],
                               ),
                             ),
@@ -439,15 +580,16 @@ class _AdminDeliveredInvoicesScreenState extends State<AdminDeliveredInvoicesScr
                              Column(
                                crossAxisAlignment: CrossAxisAlignment.end,
                                children: [
-                                 ElevatedButton(
-                                   onPressed: allValid && selected.isNotEmpty
-                                       ? () async {
+                                 if (!widget.forSales)
+                                   ElevatedButton(
+                                     onPressed: allValid && selected.isNotEmpty
+                                         ? () async {
                                            for (final inv in selected) {
                                              final bank = _bankAmounts[inv.id] ?? inv.totalAmount;
                                              final cash = _cashAmounts[inv.id] ?? 0.0;
                                              await _invoiceService.updateInvoicePayment(
                                                inv.id,
-                                               true,
+                                               true, // isPaid = true
                                                (bank > 0 && cash > 0)
                                                    ? 'mixed'
                                                    : (bank > 0)
@@ -457,14 +599,11 @@ class _AdminDeliveredInvoicesScreenState extends State<AdminDeliveredInvoicesScr
                                                bankAmount: bank,
                                                cashAmount: cash,
                                              );
-                                             await _invoiceService.updateInvoice(
-                                               inv.copyWith(
-                                                 status: InvoiceStatus.delivered,
-                                                 acceptedByAdmin: true,
-                                                 bankAmount: bank,
-                                                 cashAmount: cash,
-                                               ),
+                                             await _invoiceService.updateInvoiceStatus(
+                                               inv.id,
+                                               InvoiceStatus.paymentChecked, // Переводим в статус "Проверка оплат"
                                              );
+                                             await _invoiceService.updateInvoiceAcceptedByAdmin(inv.id, true);
                                            }
                                            _loadData();
                                          }
@@ -476,9 +615,11 @@ class _AdminDeliveredInvoicesScreenState extends State<AdminDeliveredInvoicesScr
                                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
                                    ),
                                  ),
-                                 const SizedBox(height: 8),
-                                 Text('Банк: ${totalBank.toStringAsFixed(2)} ₸', style: TextStyle(fontWeight: FontWeight.w500)),
-                                 Text('Наличные: ${totalCash.toStringAsFixed(2)} ₸', style: TextStyle(fontWeight: FontWeight.w500)),
+                                 if (!widget.forSales) ...[
+                                   const SizedBox(height: 8),
+                                   Text('Банк: ${totalBank.toStringAsFixed(2)} ₸', style: TextStyle(fontWeight: FontWeight.w500)),
+                                   Text('Наличные: ${totalCash.toStringAsFixed(2)} ₸', style: TextStyle(fontWeight: FontWeight.w500)),
+                                 ],
                                ],
                              ),
                            ],
@@ -571,22 +712,23 @@ class _AdminDeliveredInvoicesScreenState extends State<AdminDeliveredInvoicesScr
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Чекбокс выбора
-              Padding(
-                padding: const EdgeInsets.only(left: 8, right: 0, top: 16),
-                child: Checkbox(
-                  value: _selectedInvoiceIds.contains(invoice.id),
-                  onChanged: (val) {
-                    setState(() {
-                      if (val == true) {
-                        _selectedInvoiceIds.add(invoice.id);
-                      } else {
-                        _selectedInvoiceIds.remove(invoice.id);
-                      }
-                    });
-                  },
+              // Чекбокс выбора (только для админа)
+              if (!widget.forSales)
+                Padding(
+                  padding: const EdgeInsets.only(left: 8, right: 0, top: 16),
+                  child: Checkbox(
+                    value: _selectedInvoiceIds.contains(invoice.id),
+                    onChanged: (val) {
+                      setState(() {
+                        if (val == true) {
+                          _selectedInvoiceIds.add(invoice.id);
+                        } else {
+                          _selectedInvoiceIds.remove(invoice.id);
+                        }
+                      });
+                    },
+                  ),
                 ),
-              ),
               // Левая часть: информация о накладной
               Expanded(
                 child: ListTile(
@@ -617,13 +759,14 @@ class _AdminDeliveredInvoicesScreenState extends State<AdminDeliveredInvoicesScr
                   },
                 ),
               ),
-              // Правая часть: оплата
-              Container(
-                width: 220,
-                padding: const EdgeInsets.only(right: 12, top: 8, bottom: 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+              // Правая часть: оплата (только для админа)
+              if (!widget.forSales)
+                Container(
+                  width: 220,
+                  padding: const EdgeInsets.only(right: 12, top: 8, bottom: 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                     Row(
                       children: [
                         Expanded(
@@ -750,8 +893,8 @@ class _AdminDeliveredInvoicesScreenState extends State<AdminDeliveredInvoicesScr
               ),
             ],
           ),
-          // Кнопки действий внизу для мобильных устройств
-          if (!kIsWeb) ...[
+          // Кнопки действий внизу для мобильных устройств (только для админа)
+          if (!kIsWeb && !widget.forSales) ...[
             SizedBox(height: 16),
             Padding(
               padding: EdgeInsets.symmetric(horizontal: 16),
@@ -855,6 +998,9 @@ class _FilterDialog extends StatelessWidget {
   final DateTime? dateTo;
   final ValueChanged<DateTime?> onDateFromChanged;
   final ValueChanged<DateTime?> onDateToChanged;
+  final String sortField;
+  final bool sortAscending;
+  final Function(String field, bool ascending) onSortChanged;
   final VoidCallback onClear;
   final VoidCallback onApply;
   const _FilterDialog({
@@ -866,6 +1012,9 @@ class _FilterDialog extends StatelessWidget {
     required this.dateTo,
     required this.onDateFromChanged,
     required this.onDateToChanged,
+    required this.sortField,
+    required this.sortAscending,
+    required this.onSortChanged,
     required this.onClear,
     required this.onApply,
   });
@@ -913,6 +1062,71 @@ class _FilterDialog extends StatelessWidget {
               },
               child: Text(dateTo == null ? 'По дату' : DateFormat('dd.MM.yyyy').format(dateTo!)),
             ),
+            const SizedBox(height: 16),
+            const Text('Сортировка:', style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            DropdownButton<String>(
+              value: sortField,
+              hint: Text('Выберите поле для сортировки'),
+              items: [
+                DropdownMenuItem(
+                  value: 'date',
+                  child: Row(
+                    children: [
+                      Text('Дата'),
+                      Spacer(),
+                      Icon(sortField == 'date' 
+                        ? (sortAscending ? Icons.arrow_upward : Icons.arrow_downward)
+                        : Icons.unfold_more
+                      ),
+                    ],
+                  ),
+                ),
+                DropdownMenuItem(
+                  value: 'name',
+                  child: Row(
+                    children: [
+                      Text('Название'),
+                      Spacer(),
+                      Icon(sortField == 'name' 
+                        ? (sortAscending ? Icons.arrow_upward : Icons.arrow_downward)
+                        : Icons.unfold_more
+                      ),
+                    ],
+                  ),
+                ),
+                DropdownMenuItem(
+                  value: 'amount',
+                  child: Row(
+                    children: [
+                      Text('Сумма'),
+                      Spacer(),
+                      Icon(sortField == 'amount' 
+                        ? (sortAscending ? Icons.arrow_upward : Icons.arrow_downward)
+                        : Icons.unfold_more
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              onChanged: (value) {
+                if (value != null) {
+                  onSortChanged(value, sortField == value ? !sortAscending : false);
+                }
+              },
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton(
+              onPressed: () => onSortChanged(sortField, !sortAscending),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Изменить направление'),
+                  Icon(sortAscending ? Icons.arrow_upward : Icons.arrow_downward),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
             OutlinedButton(onPressed: onClear, child: Text('Сбросить фильтры')),
           ],
         ),

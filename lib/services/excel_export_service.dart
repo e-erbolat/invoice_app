@@ -1,22 +1,39 @@
 import 'dart:typed_data';
 import 'dart:io';
 import 'package:excel/excel.dart';
-import 'package:file_saver/file_saver.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:intl/intl.dart';
 import '../models/invoice.dart';
 
 class ExcelExportService {
+  static bool _isExporting = false;
+  
   static Future<void> exportInvoicesToExcel({
     required List<Invoice> invoices,
     required String sheetName,
     required String fileName,
-    bool includePaymentInfo = false,
   }) async {
+    // Защита от двойного вызова
+    if (_isExporting) return;
+    _isExporting = true;
+    
+    try {
     if (invoices.isEmpty) return;
     
+    // Создаем Excel файл
     final excel = Excel.createExcel();
+    
+    // Удаляем лист по умолчанию
+     String firstSheetName = excel.tables.keys.first;
+    // Получаем старый лист
+    var firstSheet = excel.tables[firstSheetName];
+    if (firstSheet != null) {
+      excel.delete(firstSheetName);
+    }
+    
+    
+    // Создаем новый лист с нужным именем
     final sheet = excel[sheetName];
     final cellStyle = CellStyle(
       fontFamily: 'Times New Roman',
@@ -94,7 +111,7 @@ class ExcelExportService {
       
       // Итоги
       final totalQuantity = invoice.items.fold<int>(0, (sum, item) => sum + item.quantity);
-      var cellItogo = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: currentRow));
+      var cellItogo = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: currentRow));
       cellItogo.value = 'Итого';
       cellItogo.cellStyle = cellStyle;
       var cellQty = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: currentRow));
@@ -118,27 +135,12 @@ class ExcelExportService {
       currentRow++;
       
       // Контактная информация
-      var cellContact = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: currentRow));
-      cellContact.value = '${invoice.salesRepName}';
+      var cellContact = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: currentRow)); 
       cellContact.cellStyle = cellStyle;
       currentRow++;
+      currentRow++;
       
-      // Информация об оплате (если требуется)
-      if (includePaymentInfo) {
-        final bankAmount = invoice.bankAmount ?? invoice.totalAmount;
-        final cashAmount = invoice.cashAmount ?? 0.0;
-        
-        var cellBank = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: currentRow));
-        cellBank.value = 'Банк: ${bankAmount.toStringAsFixed(2)} ₸';
-        cellBank.cellStyle = cellStyle;
-        currentRow++;
-        
-        var cellCash = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: currentRow));
-        cellCash.value = 'Наличные: ${cashAmount.toStringAsFixed(2)} ₸';
-        cellCash.cellStyle = cellStyle;
-        currentRow++;
-      }
-      
+     
       // Пустая строка между накладными
       if (invoiceIndex < invoices.length - 1) {
         currentRow++;
@@ -148,26 +150,18 @@ class ExcelExportService {
     // Сохраняем файл
     final bytes = excel.save();
     if (bytes != null) {
-      if (kIsWeb) {
-        // Для веб-версии используем FileSaver
-        await FileSaver.instance.saveFile(
-          name: fileName,
-          bytes: Uint8List.fromList(bytes),
-          ext: 'xlsx',
-          mimeType: MimeType.other,
-          customMimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        );
-      } else {
-        // Для мобильной версии используем Share
-        await Share.shareXFiles(
-          [XFile.fromData(
-            Uint8List.fromList(bytes),
-            name: '$fileName.xlsx',
-            mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-          )],
-          text: 'Экспорт накладных в Excel',
-        );
-      }
+      // Используем Share для всех платформ, чтобы избежать двойного скачивания
+      await Share.shareXFiles(
+        [XFile.fromData(
+          Uint8List.fromList(bytes),
+          name: '$fileName.xlsx',
+          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )],
+        text: 'Экспорт накладных в Excel',
+      );
+    }
+    } finally {
+      _isExporting = false;
     }
   }
 } 

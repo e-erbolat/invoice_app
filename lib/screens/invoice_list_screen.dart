@@ -95,6 +95,17 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
 
   void _filterInvoices() {
     List<Invoice> filtered = _invoices;
+    
+    // Сортируем по дате принятия оплаты (для архива) или по дате создания
+    filtered.sort((a, b) {
+      // Если накладная в архиве и есть дата принятия, сортируем по ней
+      if (a.status == InvoiceStatus.archive && a.acceptedAt != null &&
+          b.status == InvoiceStatus.archive && b.acceptedAt != null) {
+        return b.acceptedAt!.compareTo(a.acceptedAt!); // Новые сначала
+      }
+      // Иначе сортируем по дате создания
+      return b.date.compareTo(a.date);
+    });
 
     // Применяем поиск
     if (_searchQuery.isNotEmpty) {
@@ -306,13 +317,28 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
 
 
 
+  bool _isExporting = false;
+
   void _exportInvoicesToExcel() async {
-    await ExcelExportService.exportInvoicesToExcel(
-      invoices: _filteredInvoices,
-      sheetName: 'Архив накладных',
-      fileName: 'archive_invoices',
-      includePaymentInfo: true,
-    );
+    if (_isExporting) return; // Защита от множественных нажатий
+    
+    setState(() {
+      _isExporting = true;
+    });
+    
+    try {
+      await ExcelExportService.exportInvoicesToExcel(
+        invoices: _filteredInvoices,
+        sheetName: 'Архив накладных',
+        fileName: 'archive_invoices',
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isExporting = false;
+        });
+      }
+    }
   }
 
   Color _getStatusColor(int status) {
@@ -387,11 +413,17 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
               onPressed: _exportSelectedInvoicesToPdf,
             ),
           if (_selectedInvoiceIds.isNotEmpty)
-            IconButton(
-              icon: Icon(kIsWeb ? Icons.table_chart : Icons.share),
-              tooltip: kIsWeb ? 'Экспорт в Excel' : 'Поделиться Excel',
-              onPressed: _exportInvoicesToExcel,
-            ),
+                                             IconButton(
+             icon: _isExporting 
+               ? SizedBox(
+                   width: 16,
+                   height: 16,
+                   child: CircularProgressIndicator(strokeWidth: 2),
+                 )
+               : Icon(Icons.share),
+             tooltip: 'Поделиться Excel',
+             onPressed: _isExporting ? null : _exportInvoicesToExcel,
+           ),
         ],
       ),
       body: Column(
@@ -569,6 +601,13 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
                           final date = invoice.date.toDate();
                           final dateStr = DateFormat('dd.MM.yyyy').format(date);
                           final dateNum = DateFormat('ddMMyyyy').format(date);
+                          
+                          // Для архива показываем дату принятия оплаты, если есть
+                          String displayDateStr = dateStr;
+                          if (invoice.status == InvoiceStatus.archive && invoice.acceptedAt != null) {
+                            final acceptedDate = invoice.acceptedAt!.toDate();
+                            displayDateStr = DateFormat('dd.MM.yyyy').format(acceptedDate);
+                          }
                           String suffix = '';
                           final idMatch = RegExp(r'(\d{4})$').firstMatch(invoice.id);
                           if (idMatch != null) {
@@ -586,7 +625,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   Text('${index + 1}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                                  Text(dateStr, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                  Text(displayDateStr, style: const TextStyle(fontSize: 12, color: Colors.grey)),
                                 ],
                               ),
                               title: Text(
@@ -599,8 +638,17 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
                                   Text('${invoice.outletName} • ${invoice.salesRepName}'),
                                   Text('Адрес: ${invoice.outletAddress}'),
                                   Text(
-                                    '${DateFormat('dd.MM.yyyy').format(invoice.date.toDate())} • ${invoice.items.length} товаров',
+                                    '${displayDateStr} • ${invoice.items.length} товаров',
                                     style: const TextStyle(color: Colors.grey),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Итого: ${invoice.totalAmount.toStringAsFixed(2)} ₸',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                      color: Colors.blue,
+                                    ),
                                   ),
                                   const SizedBox(height: 4),
                                   Container(
@@ -677,11 +725,23 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
                                   ],
                                 ],
                               ),
-                              trailing: Checkbox(
-                                value: isSelected,
-                                onChanged: (value) => _toggleInvoiceSelection(invoice.id),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  // Кнопка деталей
+                                  IconButton(
+                                    icon: const Icon(Icons.info_outline),
+                                    onPressed: () => _showInvoiceDetails(invoice),
+                                    tooltip: 'Детали накладной',
+                                  ),
+                                  // Чекбокс для выбора
+                                  Checkbox(
+                                    value: isSelected,
+                                    onChanged: (value) => _toggleInvoiceSelection(invoice.id),
+                                  ),
+                                ],
                               ),
-                              onTap: () => _toggleInvoiceSelection(invoice.id),
+                              onTap: () => _showInvoiceDetails(invoice),
                             ),
                           );
                         },
@@ -702,7 +762,9 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('Дата: ${DateFormat('dd.MM.yyyy').format(invoice.date.toDate())}'),
+              Text('Дата создания: ${DateFormat('dd.MM.yyyy').format(invoice.date.toDate())}'),
+              if (invoice.status == InvoiceStatus.archive && invoice.acceptedAt != null)
+                Text('Дата принятия: ${DateFormat('dd.MM.yyyy').format(invoice.acceptedAt!.toDate())}'),
               Text('Торговая точка: ${invoice.outletName}'),
               Text('Торговый представитель: ${invoice.salesRepName}'),
               const SizedBox(height: 16),
@@ -791,6 +853,74 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
                 ),
               ],
               const SizedBox(height: 16),
+              // Итоговая сумма
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue.shade200),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Итоговая сумма:',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                    Text(
+                      '${invoice.totalAmount.toStringAsFixed(2)} ₸',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                        color: Colors.blue,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Информация о платежах
+              if (invoice.isPaid && (invoice.bankAmount != null || invoice.cashAmount != null)) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.green.shade200),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Детали оплаты:',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 8),
+                      if (invoice.bankAmount != null && invoice.bankAmount! > 0)
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Банк:'),
+                            Text('${invoice.bankAmount!.toStringAsFixed(2)} ₸'),
+                          ],
+                        ),
+                      if (invoice.cashAmount != null && invoice.cashAmount! > 0) ...[
+                        if (invoice.bankAmount != null && invoice.bankAmount! > 0)
+                          const SizedBox(height: 4),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Наличные:'),
+                            Text('${invoice.cashAmount!.toStringAsFixed(2)} ₸'),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 16),
               const Text('Товары:', style: TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               ...invoice.items.map((item) => Padding(
@@ -824,6 +954,17 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Закрыть'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.pushNamed(
+                context,
+                '/invoice',
+                arguments: invoice,
+              );
+            },
+            child: const Text('Полные детали'),
           ),
         ],
       ),

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../models/cash_register.dart';
 import '../services/cash_register_service.dart';
+import '../services/invoice_service.dart';
+import '../models/invoice.dart';
+import 'invoice_screen.dart';
 import 'package:intl/intl.dart';
 
 class CashRegisterScreen extends StatefulWidget {
@@ -12,7 +15,9 @@ class CashRegisterScreen extends StatefulWidget {
 
 class _CashRegisterScreenState extends State<CashRegisterScreen> {
   final CashRegisterService _cashRegisterService = CashRegisterService();
+  final InvoiceService _invoiceService = InvoiceService();
   List<CashRegister> _cashRecords = [];
+  Map<String, Invoice?> _invoiceCache = {}; // Кэш для накладных
   bool _isLoading = true;
   DateTime? _dateFrom;
   DateTime? _dateTo;
@@ -32,6 +37,20 @@ class _CashRegisterScreenState extends State<CashRegisterScreen> {
         toDate: _dateTo,
       );
       final total = await _cashRegisterService.getTotalCashAmount();
+      
+      // Загружаем информацию о накладных для отображения названий магазинов
+      _invoiceCache.clear();
+      for (final record in records) {
+        if (record.invoiceId != null && !_invoiceCache.containsKey(record.invoiceId)) {
+          try {
+            final invoice = await _invoiceService.getInvoiceById(record.invoiceId!);
+            _invoiceCache[record.invoiceId!] = invoice;
+          } catch (e) {
+            // Если накладная не найдена, оставляем null
+            _invoiceCache[record.invoiceId!] = null;
+          }
+        }
+      }
       
       setState(() {
         _cashRecords = records;
@@ -139,6 +158,8 @@ class _CashRegisterScreenState extends State<CashRegisterScreen> {
                         itemBuilder: (context, index) {
                           final record = _cashRecords[index];
                           final isPositive = record.amount > 0;
+                          final invoice = record.invoiceId != null ? _invoiceCache[record.invoiceId] : null;
+                          
                           return Card(
                             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                             child: ListTile(
@@ -157,6 +178,11 @@ class _CashRegisterScreenState extends State<CashRegisterScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(DateFormat('dd.MM.yyyy HH:mm').format(record.date)),
+                                  if (invoice != null) ...[
+                                    Text('Магазин: ${invoice.outletName}'),
+                                    if (invoice.outletAddress.isNotEmpty)
+                                      Text('Адрес: ${invoice.outletAddress}'),
+                                  ],
                                   if (record.invoiceId != null)
                                     Text('Накладная: ${record.invoiceId}'),
                                 ],
@@ -169,6 +195,14 @@ class _CashRegisterScreenState extends State<CashRegisterScreen> {
                                   fontSize: 16,
                                 ),
                               ),
+                              onTap: record.invoiceId != null ? () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => InvoiceScreen(invoiceId: record.invoiceId!),
+                                  ),
+                                );
+                              } : null,
                             ),
                           );
                         },

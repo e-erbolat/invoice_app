@@ -175,7 +175,7 @@ class _AdminPackingInvoicesScreenState extends State<AdminPackingInvoicesScreen>
         context: context,
         builder: (context) => AlertDialog(
           title: Text('Отклонить накладную?'),
-          content: Text('Вы уверены, что хотите отклонить и удалить накладную №${invoice.id}?'),
+          content: Text('Вы уверены, что хотите отклонить накладную №${invoice.id} и вернуть её на рассмотрение?'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
@@ -184,8 +184,17 @@ class _AdminPackingInvoicesScreenState extends State<AdminPackingInvoicesScreen>
             ElevatedButton(
               onPressed: () async {
                 Navigator.pop(context);
-                await _invoiceService.deleteInvoice(invoice.id);
+                // Возвращаем накладную в статус "на рассмотрении"
+                await _invoiceService.updateInvoiceStatus(invoice.id, InvoiceStatus.review);
                 _loadData();
+                
+                // Показываем сообщение об успехе
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Накладная возвращена на рассмотрение'),
+                    backgroundColor: Colors.orange,
+                  ),
+                );
               },
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
               child: Text('Отклонить'),
@@ -273,26 +282,93 @@ class _AdminPackingInvoicesScreenState extends State<AdminPackingInvoicesScreen>
     _clearSelection();
   }
 
-  Future<void> _acceptAllSelected() async {
-    final selected = _filteredInvoices.where((inv) => _selectedInvoiceIds.contains(inv.id)).toList();
-    if (selected.isEmpty) return;
-    for (final inv in selected) {
-      await _invoiceService.updateInvoiceStatus(inv.id, InvoiceStatus.delivery);
-    }
-    _loadData();
-    _clearSelection();
-  }
-
-  void _exportSelectedInvoicesToExcel() async {
+  Future<void> _transferAllSelected() async {
     final selected = _filteredInvoices.where((inv) => _selectedInvoiceIds.contains(inv.id)).toList();
     if (selected.isEmpty) return;
     
-    await ExcelExportService.exportInvoicesToExcel(
-      invoices: selected,
-      sheetName: 'Накладные на сборке',
-      fileName: 'packing_invoices',
-      includePaymentInfo: false,
+    // Показываем диалог подтверждения
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Подтвердите действие'),
+        content: Text('Вы уверены, что хотите передать ${selected.length} накладных на доставку?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('Отмена'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text('Передать'),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+          ),
+        ],
+      ),
     );
+    
+    if (confirmed == true) {
+      // Показываем индикатор загрузки
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          content: Row(
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 16),
+              Text('Передача накладных...'),
+            ],
+          ),
+        ),
+      );
+      
+      // Передаем все выбранные накладные
+      for (final inv in selected) {
+        await _invoiceService.updateInvoiceStatus(inv.id, InvoiceStatus.delivery);
+      }
+      
+      // Закрываем индикатор загрузки
+      Navigator.pop(context);
+      
+      // Обновляем данные и очищаем выбор
+      _loadData();
+      _clearSelection();
+      
+      // Показываем сообщение об успехе
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${selected.length} накладных передано на доставку'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
+  }
+
+  bool _isExporting = false;
+
+  void _exportSelectedInvoicesToExcel() async {
+    if (_isExporting) return; // Защита от множественных нажатий
+    
+    final selected = _filteredInvoices.where((inv) => _selectedInvoiceIds.contains(inv.id)).toList();
+    if (selected.isEmpty) return;
+    
+    setState(() {
+      _isExporting = true;
+    });
+    
+    try {
+      await ExcelExportService.exportInvoicesToExcel(
+        invoices: selected,
+        sheetName: 'Накладные на сборке',
+        fileName: 'packing_invoices',
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isExporting = false;
+        });
+      }
+    }
   }
 
   @override
@@ -418,8 +494,11 @@ class _AdminPackingInvoicesScreenState extends State<AdminPackingInvoicesScreen>
                             const Spacer(),
                             Builder(
                               builder: (context) {
-                                final selected = _filteredInvoices.where((inv) => _selectedInvoiceIds.contains(inv.id)).toList();
-                                final total = selected.fold<double>(0.0, (sum, inv) => sum + inv.totalAmount);
+                                final total = _selectedInvoiceIds.isEmpty
+                                    ? _filteredInvoices.fold<double>(0.0, (sum, inv) => sum + inv.totalAmount)
+                                    : _filteredInvoices
+                                        .where((inv) => _selectedInvoiceIds.contains(inv.id))
+                                        .fold<double>(0.0, (sum, inv) => sum + inv.totalAmount);
                                 return Text(
                                   'Общая сумма: ${total.toStringAsFixed(2)} ₸',
                                   style: const TextStyle(
@@ -437,9 +516,22 @@ class _AdminPackingInvoicesScreenState extends State<AdminPackingInvoicesScreen>
                           Row(
                             children: [
                               ElevatedButton.icon(
-                                icon: Icon(kIsWeb ? Icons.table_chart : Icons.share),
-                                label: Text(kIsWeb ? 'Экспорт в Excel' : 'Поделиться Excel'),
-                                onPressed: _exportSelectedInvoicesToExcel,
+                                icon: Icon(Icons.send),
+                                label: Text('Передать все'),
+                                onPressed: _transferAllSelected,
+                                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+                              ),
+                              const SizedBox(width: 12),
+                              ElevatedButton.icon(
+                                icon: _isExporting 
+                                  ? SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                    )
+                                  : Icon(Icons.share),
+                                label: Text('Поделиться Excel'),
+                                onPressed: _isExporting ? null : _exportSelectedInvoicesToExcel,
                                 style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
                               ),
                               const SizedBox(width: 12),

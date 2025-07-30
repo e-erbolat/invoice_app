@@ -156,13 +156,28 @@ class _AdminIncomingInvoicesScreenState extends State<AdminIncomingInvoicesScree
     }
   }
 
+  bool _isExporting = false;
+
   void _exportInvoicesToExcel() async {
-    await ExcelExportService.exportInvoicesToExcel(
-      invoices: _filteredInvoices,
-      sheetName: 'Входящие накладные',
-      fileName: 'incoming_invoices',
-      includePaymentInfo: false,
-    );
+    if (_isExporting) return; // Защита от множественных нажатий
+    
+    setState(() {
+      _isExporting = true;
+    });
+    
+    try {
+      await ExcelExportService.exportInvoicesToExcel(
+        invoices: _filteredInvoices,
+        sheetName: 'Входящие накладные',
+        fileName: 'incoming_invoices',
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isExporting = false;
+        });
+      }
+    }
   }
 
   @override
@@ -172,9 +187,15 @@ class _AdminIncomingInvoicesScreenState extends State<AdminIncomingInvoicesScree
         title: Text('Входящие накладные'),
         actions: [
           IconButton(
-            icon: Icon(kIsWeb ? Icons.table_chart : Icons.share),
-            tooltip: kIsWeb ? 'Экспорт в Excel' : 'Поделиться Excel',
-            onPressed: _exportInvoicesToExcel,
+            icon: _isExporting 
+              ? SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : Icon(Icons.share),
+            tooltip: 'Поделиться Excel',
+            onPressed: _isExporting ? null : _exportInvoicesToExcel,
           ),
           if (!kIsWeb)
             IconButton(

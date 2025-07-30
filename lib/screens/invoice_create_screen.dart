@@ -45,7 +45,6 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
   FocusNode? _autocompleteProductFocusNode;
   bool _isLoading = true;
   bool _isSubmitting = false;
-  int? _selectedStatusCode;
   static const String _draftKey = 'invoice_draft';
   bool _restoredFromDraft = false;
   bool get isEditMode => widget.invoiceToEdit != null;
@@ -129,7 +128,6 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
         });
         if (isEditMode) {
           _preFillFromInvoice(widget.invoiceToEdit!);
-          _selectedStatusCode = widget.invoiceToEdit!.status;
         }
       }
     } catch (e) {
@@ -263,10 +261,10 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
     }
     setState(() { _isSubmitting = true; });
     try {
-      int status = InvoiceStatus.review;
-      if (_currentUser != null && _currentUser!.role == 'admin') {
-        status = _selectedStatusCode ?? InvoiceStatus.review;
-      }
+      // При создании новой накладной всегда устанавливаем статус "на рассмотрении"
+      int status = isEditMode 
+          ? widget.invoiceToEdit!.status
+          : InvoiceStatus.review;
       final invoice = Invoice(
         id: isEditMode ? widget.invoiceToEdit!.id : DateTime.now().millisecondsSinceEpoch.toString(),
         outletId: _selectedOutlet!.id,
@@ -688,32 +686,6 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
                 ],
               ),
             ),
-            
-            const SizedBox(height: 24),
-            
-            // Удаляю/скрываю выбор статуса накладной
-            if (_currentUser != null && _currentUser!.role != 'sales')
-              DropdownButtonFormField<int>(
-                value: _selectedStatusCode ?? InvoiceStatus.review,
-                decoration: const InputDecoration(
-                  labelText: 'Статус накладной',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.assignment),
-                ),
-                items: [
-                  DropdownMenuItem(value: InvoiceStatus.review, child: Text(InvoiceStatus.getName(InvoiceStatus.review))),
-                  DropdownMenuItem(value: InvoiceStatus.packing, child: Text(InvoiceStatus.getName(InvoiceStatus.packing))),
-                  DropdownMenuItem(value: InvoiceStatus.delivery, child: Text(InvoiceStatus.getName(InvoiceStatus.delivery))),
-                  DropdownMenuItem(value: InvoiceStatus.delivered, child: Text(InvoiceStatus.getName(InvoiceStatus.delivered))),
-                  DropdownMenuItem(value: InvoiceStatus.cancelled, child: Text(InvoiceStatus.getName(InvoiceStatus.cancelled))),
-                ],
-                onChanged: (value) {
-                  setState(() {
-                    _selectedStatusCode = value;
-                  });
-                  _saveDraft();
-                },
-              ),
             
             const SizedBox(height: 24),
             

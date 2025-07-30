@@ -69,6 +69,33 @@ class _AdminPaymentCheckInvoicesScreenState extends State<AdminPaymentCheckInvoi
     }
   }
 
+  Future<void> _rejectInvoice(Invoice invoice) async {
+    setState(() { _isLoading = true; });
+    
+    try {
+      // Возвращаем накладную в статус "доставлен"
+      await _invoiceService.updateInvoice(invoice.copyWith(
+        status: InvoiceStatus.delivered,
+        acceptedBySuperAdmin: false,
+      ));
+      
+      await _loadUserAndData();
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Накладная возвращена в статус "доставлен"'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка при отклонении накладной: $e')),
+      );
+    } finally {
+      setState(() { _isLoading = false; });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -121,9 +148,27 @@ class _AdminPaymentCheckInvoicesScreenState extends State<AdminPaymentCheckInvoi
                             if (_currentUser?.role == 'superadmin')
                               Padding(
                                 padding: const EdgeInsets.only(top: 8.0),
-                                child: ElevatedButton(
-                                  onPressed: () => _confirmInvoice(invoice),
-                                  child: const Text('Подтвердить'),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    ElevatedButton(
+                                      onPressed: () => _confirmInvoice(invoice),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.green,
+                                        foregroundColor: Colors.white,
+                                      ),
+                                      child: const Text('Подтвердить'),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    ElevatedButton(
+                                      onPressed: () => _rejectInvoice(invoice),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.red,
+                                        foregroundColor: Colors.white,
+                                      ),
+                                      child: const Text('Отклонить'),
+                                    ),
+                                  ],
                                 ),
                               ),
                           ],
