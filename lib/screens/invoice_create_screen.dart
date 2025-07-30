@@ -201,12 +201,12 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
       return;
     }
 
-    final item = InvoiceItem(
+    final item = InvoiceItem.create(
       productId: _selectedProduct!.id,
       productName: _selectedProduct!.name,
       quantity: _quantity,
-      price: _price,
-      totalPrice: _isBonus ? 0.0 : _quantity * _price,
+      price: _price, // Фактическая цена (со скидкой)
+      originalPrice: _selectedProduct!.price, // Цена по прайсу из каталога
       isBonus: _isBonus,
     );
 
@@ -631,13 +631,14 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
                               );
                               if (result != null) {
                                 setState(() {
-                                  _invoiceItems[index] = InvoiceItem(
-                                    productId: item.productId,
-                                    productName: item.productName,
-                                    quantity: result['quantity'],
-                                    price: item.isBonus ? 0.0 : result['price'],
-                                    totalPrice: item.isBonus ? 0.0 : result['quantity'] * result['price'],
-                                    isBonus: item.isBonus,
+                                  final newQuantity = result['quantity'];
+                                  final newPrice = item.isBonus ? 0.0 : result['price'];
+                                  final newTotalPrice = item.isBonus ? 0.0 : newQuantity * newPrice;
+                                  
+                                  _invoiceItems[index] = item.copyWith(
+                                    quantity: newQuantity,
+                                    price: newPrice,
+                                    totalPrice: newTotalPrice,
                                   );
                                 });
                                 _saveDraft();

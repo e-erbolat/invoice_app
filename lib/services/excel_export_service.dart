@@ -82,8 +82,8 @@ class ExcelExportService {
           switch (col) {
             case 0: cell.value = itemIndex + 1; break;
             case 1: cell.value = item.productName; break;
-            case 2: cell.value = item.price; break;
-            case 3: cell.value = item.price; break;
+            case 2: cell.value = item.originalPrice; break; // Цена по прайсу
+            case 3: cell.value = item.price; break; // Цена со скидкой
             case 4: cell.value = item.quantity; break;
             case 5: cell.value = item.totalPrice; break;
           }
@@ -99,8 +99,8 @@ class ExcelExportService {
           switch (col) {
             case 0: cell.value = nonBonusItems.length + itemIndex + 1; break;
             case 1: cell.value = 'Бонус ${item.productName}'; break;
-            case 2: cell.value = item.price; break;
-            case 3: cell.value = item.price; break;
+            case 2: cell.value = item.originalPrice; break; // Цена по прайсу
+            case 3: cell.value = item.price; break; // Цена со скидкой
             case 4: cell.value = item.quantity; break;
             case 5: cell.value = item.totalPrice; break;
           }

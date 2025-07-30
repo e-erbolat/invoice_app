@@ -12,6 +12,15 @@ class InvoiceService {
       print('[InvoiceService] Статус: ${invoice.status}');
       print('[InvoiceService] SalesRepId: ${invoice.salesRepId}');
       print('[InvoiceService] SalesRepName: ${invoice.salesRepName}');
+      print('[InvoiceService] Количество товаров: ${invoice.items.length}');
+      for (int i = 0; i < invoice.items.length; i++) {
+        final item = invoice.items[i];
+        print('[InvoiceService] Товар $i: ${item.productName}');
+        print('[InvoiceService]   - Цена по прайсу: ${item.originalPrice}');
+        print('[InvoiceService]   - Фактическая цена: ${item.price}');
+        print('[InvoiceService]   - Количество: ${item.quantity}');
+        print('[InvoiceService]   - Итого: ${item.totalPrice}');
+      }
       
       await _firestore.collection('invoices').doc(invoice.id).set({
         'id': invoice.id,
@@ -33,6 +42,7 @@ class InvoiceService {
           'productName': item.productName,
           'quantity': item.quantity,
           'price': item.price,
+          'originalPrice': item.originalPrice,
           'totalPrice': item.totalPrice,
           'isBonus': item.isBonus,
         }).toList(),
@@ -76,6 +86,7 @@ class InvoiceService {
             productName: item['productName'],
             quantity: item['quantity'],
             price: (item['price'] as num).toDouble(),
+            originalPrice: (item['originalPrice'] as num?)?.toDouble() ?? (item['price'] as num).toDouble(),
             totalPrice: (item['totalPrice'] as num).toDouble(),
             isBonus: item['isBonus'] ?? false,
           )).toList(),
@@ -118,7 +129,9 @@ class InvoiceService {
             productName: item['productName'],
             quantity: item['quantity'],
             price: (item['price'] as num).toDouble(),
+            originalPrice: (item['originalPrice'] as num?)?.toDouble() ?? (item['price'] as num).toDouble(),
             totalPrice: (item['totalPrice'] as num).toDouble(),
+            isBonus: item['isBonus'] ?? false,
           )).toList(),
           totalAmount: (data['totalAmount'] as num).toDouble(),
         );
@@ -155,7 +168,9 @@ class InvoiceService {
           productName: item['productName'],
           quantity: item['quantity'],
           price: (item['price'] as num).toDouble(),
+          originalPrice: (item['originalPrice'] as num?)?.toDouble() ?? (item['price'] as num).toDouble(),
           totalPrice: (item['totalPrice'] as num).toDouble(),
+          isBonus: item['isBonus'] ?? false,
         )).toList(),
         totalAmount: (data['totalAmount'] as num).toDouble(),
       );
@@ -211,7 +226,9 @@ class InvoiceService {
             productName: item['productName'],
             quantity: item['quantity'],
             price: (item['price'] as num).toDouble(),
+            originalPrice: (item['originalPrice'] as num?)?.toDouble() ?? (item['price'] as num).toDouble(),
             totalPrice: (item['totalPrice'] as num).toDouble(),
+            isBonus: item['isBonus'] ?? false,
           )).toList(),
           totalAmount: (data['totalAmount'] as num).toDouble(),
         );
@@ -246,6 +263,14 @@ class InvoiceService {
   // Обновить накладную полностью
   Future<void> updateInvoice(Invoice invoice) async {
     try {
+      print('[InvoiceService] Обновление накладной: ${invoice.id}');
+      print('[InvoiceService] Количество товаров: ${invoice.items.length}');
+      for (int i = 0; i < invoice.items.length; i++) {
+        final item = invoice.items[i];
+        print('[InvoiceService] Товар $i: ${item.productName}');
+        print('[InvoiceService]   - Цена по прайсу: ${item.originalPrice}');
+        print('[InvoiceService]   - Фактическая цена: ${item.price}');
+      }
       await _firestore.collection('invoices').doc(invoice.id).update({
         'outletId': invoice.outletId,
         'outletName': invoice.outletName,
@@ -265,6 +290,7 @@ class InvoiceService {
           'productName': item.productName,
           'quantity': item.quantity,
           'price': item.price,
+          'originalPrice': item.originalPrice,
           'totalPrice': item.totalPrice,
           'isBonus': item.isBonus,
         }).toList(),
