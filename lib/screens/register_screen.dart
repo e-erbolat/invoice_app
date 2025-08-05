@@ -21,20 +21,37 @@ class _RegisterScreenState extends State<RegisterScreen> {
       _error = null;
     });
     try {
-      await AuthService().registerWithEmail(
+      // Регистрируем пользователя
+      final user = await AuthService().registerWithEmail(
         _emailController.text.trim(),
         _passwordController.text.trim(),
         'sales', // всегда торговый
       );
+      
+      if (user != null && user.salesRepId != null) {
+        print('✅ Пользователь зарегистрирован с salesRepId: ${user.salesRepId}');
+      }
+      
+      // Автоматически входим в систему
       await AuthService().signInWithEmail(
         _emailController.text.trim(),
         _passwordController.text.trim(),
       );
+      
+      // Показываем сообщение об успешной регистрации
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('✅ Регистрация успешна! Создан торговый представитель.'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      
       Navigator.pushReplacementNamed(context, '/');
     } catch (e) {
       setState(() {
         _error = 'Ошибка регистрации: ${e.toString()}';
       });
+      print('❌ Ошибка в _register: $e');
     } finally {
       setState(() {
         _isLoading = false;

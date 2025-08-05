@@ -12,13 +12,55 @@ class AuthService {
       final userCredential = await _auth.createUserWithEmailAndPassword(email: email, password: password);
       final user = userCredential.user;
       if (user != null) {
-        final appUser = AppUser(uid: user.uid, email: user.email ?? '', role: role);
+        String? salesRepId;
+        
+        // Если это торговый представитель, создаем запись в sales_reps
+        if (role == 'sales') {
+          salesRepId = await _createSalesRep(user.uid, email);
+        }
+        
+        final appUser = AppUser(
+          uid: user.uid, 
+          email: user.email ?? '', 
+          role: role,
+          salesRepId: salesRepId,
+        );
+        
         await _firestore.collection('users').doc(user.uid).set(appUser.toMap());
         return appUser;
       }
       return null;
     } catch (e) {
       print('Ошибка регистрации: $e');
+      rethrow;
+    }
+  }
+  
+  // Создание торгового представителя
+  Future<String> _createSalesRep(String userId, String email) async {
+    try {
+      // Генерируем уникальный ID для торгового представителя
+      final salesRepId = 'sales_rep_${DateTime.now().millisecondsSinceEpoch}';
+      
+      // Создаем базовую запись торгового представителя
+      final salesRepData = {
+        'id': salesRepId,
+        'name': 'Новый представитель', // Пользователь сможет изменить позже
+        'phone': '',
+        'email': email,
+        'region': 'Не указан',
+        'commissionRate': 0.0,
+        'createdAt': DateTime.now().toIso8601String(),
+        'updatedAt': DateTime.now().toIso8601String(),
+        'userId': userId, // Связываем с пользователем
+      };
+      
+      await _firestore.collection('sales_reps').doc(salesRepId).set(salesRepData);
+      print('✅ Создан торговый представитель с ID: $salesRepId');
+      
+      return salesRepId;
+    } catch (e) {
+      print('❌ Ошибка создания торгового представителя: $e');
       rethrow;
     }
   }

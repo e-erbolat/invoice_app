@@ -49,7 +49,7 @@ class ExcelExportService {
       
       // Заголовок накладной (строка 1)
       var cell1 = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: currentRow));
-      cell1.value = 'MELLO AQTOBE';
+      cell1.value = 'MELLO ASTANA';
       cell1.cellStyle = cellStyle;
       var cell2 = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: currentRow));
       cell2.value = DateFormat('dd.MM.yyyy').format(invoice.date.toDate());

@@ -1,0 +1,45 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Пользователи - доступ только к своим данным
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Накладные - доступ для авторизованных пользователей
+    match /invoices/{invoiceId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Товары - чтение для всех, запись для авторизованных
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    
+    // Торговые точки - доступ для авторизованных пользователей
+    match /outlets/{outletId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Торговые представители - доступ для авторизованных пользователей
+    match /sales_reps/{repId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Касса - доступ для авторизованных пользователей
+    match /cash_registers/{registerId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Расходы - доступ для авторизованных пользователей
+    match /cash_expenses/{expenseId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Каталоги - доступ для авторизованных пользователей
+    match /catalogs/{catalogId} {
+      allow read, write: if request.auth != null;
+    }
+  }
+} 

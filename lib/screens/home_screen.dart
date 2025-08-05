@@ -107,6 +107,8 @@ class _HomeScreenState extends State<HomeScreen> {
           {'emoji': '💰', 'label': 'Касса', 'route': '/cash_register'},
         if (_user?.role == 'admin' || _user?.role == 'superadmin')
           {'emoji': '💸', 'label': 'Расходы', 'route': '/cash_expenses'},
+        {'emoji': '📤', 'label': 'Импорт данных', 'route': '/import'},
+        {'emoji': '📊', 'label': 'Статистика', 'route': '/import'},
       ]
     ];
     return Column(
@@ -190,9 +192,10 @@ class _HomeScreenState extends State<HomeScreen> {
       if (isAdmin)
         {'icon': Icons.location_city, 'label': 'Отчёт по точкам', 'route': '/outlet_report'},
       if (isAdmin)
-        {'icon': Icons.people_alt, 'label': 'Отчёт по представителям', 'route': '/sales_rep_report'},
-      {'icon': Icons.storefront, 'label': 'Торговые точки', 'route': '/outlets'},
-      {'icon': Icons.add_box, 'label': 'Создать накладную', 'route': '/create_invoice'},
+                {'icon': Icons.people_alt, 'label': 'Отчёт по представителям', 'route': '/sales_rep_report'},
+        {'icon': Icons.file_upload, 'label': 'Импорт данных', 'route': '/import'},
+        {'icon': Icons.storefront, 'label': 'Торговые точки', 'route': '/outlets'},
+        {'icon': Icons.add_box, 'label': 'Создать накладную', 'route': '/create_invoice'},
     ];
 
     String appBarTitle = 'Мои накладные';
@@ -244,6 +247,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
             ),
+          IconButton(
+            icon: const Icon(Icons.file_upload, color: Colors.black),
+            onPressed: () {
+              Navigator.pushNamed(context, '/import');
+            },
+            tooltip: 'Импорт данных',
+          ),
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.black),
             onPressed: () async {

@@ -47,29 +47,30 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyBnT5ulJ-U6O07SBcmNxxjcIYRlVVh0qhE',
-    appId: '1:161636546935:web:66e85bc9342ee4caf14972',
-    messagingSenderId: '161636546935',
-    projectId: 'salescloudapp',
-    authDomain: 'salescloudapp.firebaseapp.com',
-    storageBucket: 'salescloudapp.firebasestorage.app',
-    measurementId: 'G-SER6ZQXRKD',
+    apiKey: 'AIzaSyAEiap9fiqjJBkpD6wAmNancWN0yMv9cfE',
+    appId: '1:1030264475163:web:ce12433ed54f20af9732be',
+    messagingSenderId: '1030264475163',
+    projectId: 'astana-distribution',
+    authDomain: 'astana-distribution.firebaseapp.com',
+    storageBucket: 'astana-distribution.firebasestorage.app',
+    measurementId: 'G-98W4NQ9NJF',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyD0LEwRrazdwA1ase8B5h7cDMU4CXWJcrI',
-    appId: '1:161636546935:android:167b476cf0e3076cf14972',
-    messagingSenderId: '161636546935',
-    projectId: 'salescloudapp',
-    storageBucket: 'salescloudapp.firebasestorage.app',
+    apiKey: 'AIzaSyDaP4Z88SqLPozYqTBx0iIS4mEmLMtCE5A',
+    appId: '1:1030264475163:android:bad9bf16420679b09732be',
+    messagingSenderId: '1030264475163',
+    projectId: 'astana-distribution',
+    storageBucket: 'astana-distribution.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyA_e7ahoPlChu-bu2riSUhCTEXEnPyBcwI',
-    appId: '1:161636546935:ios:043875561b1f44b8f14972',
-    messagingSenderId: '161636546935',
-    projectId: 'salescloudapp',
-    storageBucket: 'salescloudapp.firebasestorage.app',
+    apiKey: 'AIzaSyCEvOBUc96DZecHG9W2i3DqTW-8JWO0uuE',
+    appId: '1:1030264475163:ios:6355ef969d568d619732be',
+    messagingSenderId: '1030264475163',
+    projectId: 'astana-distribution',
+    storageBucket: 'astana-distribution.firebasestorage.app',
     iosBundleId: 'com.example.invoiceApp',
   );
+
 }

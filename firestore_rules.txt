@@ -1,0 +1,45 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Разрешаем доступ ко всем документам (временно для разработки)
+    match /{document=**} {
+      allow read, write: if true;
+    }
+    
+    // Альтернативные правила с аутентификацией (для продакшена):
+    /*
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    match /invoices/{invoiceId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    
+    match /outlets/{outletId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    match /sales_reps/{repId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    match /cash_registers/{registerId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    match /cash_expenses/{expenseId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    match /catalogs/{catalogId} {
+      allow read, write: if request.auth != null;
+    }
+    */
+  }
+} 

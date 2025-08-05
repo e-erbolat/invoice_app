@@ -1,0 +1,67 @@
+{
+  "exportDate": "2025-08-01T20:04:48.588",
+  "collection": "products",
+  "count": 5,
+  "data": [
+    {
+      "id": "1752787210669_18",
+      "name": "Влажные салфетки Mello 100 штук",
+      "description": "Мягкие влажные салфетки для детей",
+      "price": 780,
+      "stockQuantity": 10000,
+      "category": "Гигиена",
+      "barcode": "745178675581",
+      "createdAt": "2025-07-18T02:20:10.669",
+      "updatedAt": "2025-07-18T02:20:10.669",
+      "documentId": "0Fwit6U32N6bSTcpq7ha"
+    },
+    {
+      "id": "1752787210669_12",
+      "name": "Mello одноразовые пеленки 60х60",
+      "description": "Одноразовые пеленки для новорожденных",
+      "price": 1490,
+      "stockQuantity": 5000,
+      "category": "Гигиена",
+      "barcode": "769503113326",
+      "createdAt": "2025-07-18T02:20:10.669",
+      "updatedAt": "2025-07-18T02:20:10.669",
+      "documentId": "0pvnt6YEkJzm8KZ1Ndjp"
+    },
+    {
+      "id": "1752787210669_120",
+      "name": "ENR Power AA Щелочной элемент питания 2 шт",
+      "description": "Щелочные батарейки AA",
+      "price": 980,
+      "stockQuantity": 2000,
+      "category": "Электроника",
+      "barcode": "123456789012",
+      "createdAt": "2025-07-18T02:20:10.669",
+      "updatedAt": "2025-07-18T02:20:10.669",
+      "documentId": "1DLWzEdB1JFJ7pxdPV46"
+    },
+    {
+      "id": "1752787210669_83",
+      "name": "Гель для стирки японский органический хлопок 2,1л",
+      "description": "Органический гель для стирки",
+      "price": 2820,
+      "stockQuantity": 1500,
+      "category": "Бытовая химия",
+      "barcode": "987654321098",
+      "createdAt": "2025-07-18T02:20:10.669",
+      "updatedAt": "2025-07-18T02:20:10.669",
+      "documentId": "1OJELtXFVtS7CIERCc2S"
+    },
+    {
+      "id": "1752787210669_22",
+      "name": "Влажные салфетки Mello 8x7 штук",
+      "description": "Компактные влажные салфетки",
+      "price": 680,
+      "stockQuantity": 8000,
+      "category": "Гигиена",
+      "barcode": "788364338907",
+      "createdAt": "2025-07-18T02:20:10.669",
+      "updatedAt": "2025-07-18T02:20:10.669",
+      "documentId": "1Th4TrZ1J2Euthug4Owf"
+    }
+  ]
+} 

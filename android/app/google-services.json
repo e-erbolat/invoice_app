@@ -1,21 +1,21 @@
 {
   "project_info": {
-    "project_number": "161636546935",
-    "project_id": "salescloudapp",
-    "storage_bucket": "salescloudapp.firebasestorage.app"
+    "project_number": "1030264475163",
+    "project_id": "astana-distribution",
+    "storage_bucket": "astana-distribution.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:161636546935:android:167b476cf0e3076cf14972",
+        "mobilesdk_app_id": "1:1030264475163:android:d19070f9bc5153c59732be",
         "android_client_info": {
-          "package_name": "com.example.invoice_app"
+          "package_name": "com.example.astana_distribution"
         }
       },
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyD0LEwRrazdwA1ase8B5h7cDMU4CXWJcrI"
+          "current_key": "AIzaSyDaP4Z88SqLPozYqTBx0iIS4mEmLMtCE5A"
         }
       ],
       "services": {
@@ -26,15 +26,15 @@
     },
     {
       "client_info": {
-        "mobilesdk_app_id": "1:161636546935:android:8a1cd01556c30f17f14972",
+        "mobilesdk_app_id": "1:1030264475163:android:bad9bf16420679b09732be",
         "android_client_info": {
-          "package_name": "com.example.sales_cloud_app"
+          "package_name": "com.example.invoice_app"
         }
       },
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyD0LEwRrazdwA1ase8B5h7cDMU4CXWJcrI"
+          "current_key": "AIzaSyDaP4Z88SqLPozYqTBx0iIS4mEmLMtCE5A"
         }
       ],
       "services": {

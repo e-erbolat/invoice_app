@@ -117,10 +117,13 @@ class InvoiceService {
       final querySnapshot = await _firestore
           .collection('invoices')
           .where('salesRepId', isEqualTo: salesRepId)
-          .orderBy('date', descending: true)
           .get();
 
-      return querySnapshot.docs.map((doc) {
+      // Сортируем в коде по дате (по убыванию)
+      final sortedDocs = querySnapshot.docs.toList()
+        ..sort((a, b) => (b.data()['date'] as Timestamp).compareTo(a.data()['date'] as Timestamp));
+
+      return sortedDocs.map((doc) {
         final data = doc.data();
         return Invoice(
           id: data['id'],
@@ -198,9 +201,13 @@ class InvoiceService {
       final querySnapshot = await _firestore
           .collection('invoices')
           .where('status', isEqualTo: status)
-          .orderBy('date', descending: true)
           .get();
-      return querySnapshot.docs.map((doc) {
+      
+      // Сортируем в коде по дате (по убыванию)
+      final sortedDocs = querySnapshot.docs.toList()
+        ..sort((a, b) => (b.data()['date'] as Timestamp).compareTo(a.data()['date'] as Timestamp));
+      
+      return sortedDocs.map((doc) {
         final data = doc.data();
         return Invoice.fromMap(data);
       }).toList();
@@ -216,9 +223,13 @@ class InvoiceService {
           .collection('invoices')
           .where('status', isEqualTo: status)
           .where('salesRepId', isEqualTo: salesRepId)
-          .orderBy('date', descending: true)
           .get();
-      return querySnapshot.docs.map((doc) {
+      
+      // Сортируем в коде по дате (по убыванию)
+      final sortedDocs = querySnapshot.docs.toList()
+        ..sort((a, b) => (b.data()['date'] as Timestamp).compareTo(a.data()['date'] as Timestamp));
+      
+      return sortedDocs.map((doc) {
         final data = doc.data();
         return Invoice(
           id: data['id'],
@@ -258,12 +269,16 @@ class InvoiceService {
       final querySnapshot = await _firestore
           .collection('invoices')
           .where('status', isEqualTo: status)
-          .orderBy('date', descending: true)
           .get();
       print('[InvoiceService] Получено накладных по статусу $status: ${querySnapshot.docs.length}');
       final filteredDocs = querySnapshot.docs.where((doc) => doc.data()['salesRepId'] == salesRepId);
       print('[InvoiceService] После фильтрации по salesRepId $salesRepId: ${filteredDocs.length}');
-      return filteredDocs.map((doc) {
+      
+      // Сортируем в коде по дате (по убыванию)
+      final sortedDocs = filteredDocs.toList()
+        ..sort((a, b) => (b.data()['date'] as Timestamp).compareTo(a.data()['date'] as Timestamp));
+      
+      return sortedDocs.map((doc) {
         final data = doc.data();
         return Invoice.fromMap(data);
       }).toList();
