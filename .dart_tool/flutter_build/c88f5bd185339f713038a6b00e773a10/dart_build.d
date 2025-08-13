@@ -1,0 +1,1 @@
+ /Users/ye.yerbolat/Downloads/invoice_app_1/.dart_tool/flutter_build/c88f5bd185339f713038a6b00e773a10/dart_build_result.json: 
