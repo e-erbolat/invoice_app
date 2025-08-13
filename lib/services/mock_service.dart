@@ -14,6 +14,8 @@ class MockService {
       stockQuantity: 50,
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
+      barcode: '123456789',
+      satushiCode: 'SAT-001',
     ),
     Product(
       id: '2',
@@ -24,6 +26,8 @@ class MockService {
       stockQuantity: 30,
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
+      barcode: '987654321',
+      satushiCode: 'SAT-002',
     ),
   ];
 
@@ -90,6 +94,8 @@ class MockService {
       stockQuantity: product.stockQuantity,
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
+      barcode: product.barcode,
+      satushiCode: product.satushiCode,
     );
     _products.add(newProduct);
   }

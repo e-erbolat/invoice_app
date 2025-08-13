@@ -7,6 +7,7 @@ import 'admin_packing_invoices_screen.dart';
 import 'admin_delivery_invoices_screen.dart';
 import 'admin_incoming_invoices_screen.dart';
 import 'admin_delivered_invoices_screen.dart';
+import 'profile_screen.dart';
 
 class SalesHomeScreen extends StatefulWidget {
   const SalesHomeScreen({Key? key}) : super(key: key);
@@ -73,7 +74,7 @@ class _SalesHomeScreenState extends State<SalesHomeScreen> {
     SizedBox.shrink(),
     OutletScreen(),
     WarehouseScreen(),
-    Center(child: Text('Профиль', style: TextStyle(fontSize: 24))),
+    ProfileScreen(),
   ];
 
   @override

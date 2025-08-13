@@ -209,6 +209,19 @@ class InvoiceService {
     }
   }
 
+  // Получить количество накладных по статусу
+  Future<int> getInvoiceCountByStatus(int status) async {
+    try {
+      final querySnapshot = await _firestore
+          .collection('invoices')
+          .where('status', isEqualTo: status)
+          .get();
+      return querySnapshot.docs.length;
+    } catch (e) {
+      throw Exception('Ошибка получения количества накладных по статусу: $e');
+    }
+  }
+
   // Получить накладные по статусу и торговому представителю
   Future<List<Invoice>> getInvoicesByStatusAndSalesRep(String status, String salesRepId) async {
     try {

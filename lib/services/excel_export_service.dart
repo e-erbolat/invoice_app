@@ -5,6 +5,9 @@ import 'package:share_plus/share_plus.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:intl/intl.dart';
 import '../models/invoice.dart';
+import '../models/analytics/outlet_sales_data.dart';
+import '../models/analytics/product_sales_data.dart';
+import 'dart:html' as html;
 
 class ExcelExportService {
   static bool _isExporting = false;
@@ -160,6 +163,278 @@ class ExcelExportService {
         text: 'Экспорт накладных в Excel',
       );
     }
+    } finally {
+      _isExporting = false;
+    }
+  }
+
+  /// Экспорт аналитики продаж по торговым точкам в Excel
+  static Future<void> exportOutletAnalyticsToExcel({
+    required List<OutletSalesData> outletSalesData,
+    required DateTime startDate,
+    required DateTime endDate,
+  }) async {
+    if (_isExporting) return;
+    _isExporting = true;
+
+    try {
+      if (outletSalesData.isEmpty) return;
+
+      final excel = Excel.createExcel();
+      final defaultSheetName = excel.sheets.keys.first;
+      excel.delete(defaultSheetName);
+      final sheet = excel['Аналитика по торговым точкам'];
+
+      final cellStyle = CellStyle(
+        fontFamily: 'Times New Roman',
+        fontSize: 12,
+        horizontalAlign: HorizontalAlign.Center,
+        verticalAlign: VerticalAlign.Center,
+        bold: true,
+      );
+
+      final dataStyle = CellStyle(
+        fontFamily: 'Times New Roman',
+        fontSize: 11,
+        horizontalAlign: HorizontalAlign.Left,
+        verticalAlign: VerticalAlign.Center,
+      );
+
+      int currentRow = 0;
+
+      // Заголовок отчета
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: currentRow)).value = 
+          'Аналитика продаж по торговым точкам';
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: currentRow)).cellStyle = cellStyle;
+      currentRow++;
+
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: currentRow)).value = 
+          'Период: ${DateFormat('dd.MM.yyyy').format(startDate)} - ${DateFormat('dd.MM.yyyy').format(endDate)}';
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: currentRow)).cellStyle = dataStyle;
+      currentRow++;
+      currentRow++;
+
+      // Заголовки таблицы
+      final headers = [
+        '№',
+        'Торговая точка',
+        'Адрес',
+        'Общая сумма продаж',
+        'Количество накладных',
+        'Средний чек',
+      ];
+
+      for (int i = 0; i < headers.length; i++) {
+        final cell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: i, rowIndex: currentRow));
+        cell.value = headers[i];
+        cell.cellStyle = cellStyle;
+      }
+      currentRow++;
+
+      // Данные по торговым точкам
+      for (int i = 0; i < outletSalesData.length; i++) {
+        final outlet = outletSalesData[i];
+        final averageCheck = outlet.invoiceCount > 0 
+            ? outlet.totalSales / outlet.invoiceCount 
+            : 0.0;
+
+        final cells = [
+          i + 1,
+          outlet.outletName,
+          outlet.outletAddress,
+          outlet.totalSales,
+          outlet.invoiceCount,
+          averageCheck,
+        ];
+
+        for (int j = 0; j < cells.length; j++) {
+          final cell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: j, rowIndex: currentRow));
+          cell.value = cells[j];
+          cell.cellStyle = dataStyle;
+        }
+        currentRow++;
+      }
+
+      // Итоги
+      currentRow++;
+      final totalSales = outletSalesData.fold<double>(0.0, (sum, outlet) => sum + outlet.totalSales);
+      final totalInvoices = outletSalesData.fold<int>(0, (sum, outlet) => sum + outlet.invoiceCount);
+      final averageCheck = totalInvoices > 0 ? totalSales / totalInvoices : 0.0;
+
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: currentRow)).value = 'ИТОГО';
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: currentRow)).cellStyle = cellStyle;
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: currentRow)).value = totalSales;
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: currentRow)).cellStyle = cellStyle;
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: currentRow)).value = totalInvoices;
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: currentRow)).cellStyle = cellStyle;
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: currentRow)).value = averageCheck;
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: currentRow)).cellStyle = cellStyle;
+
+      // Сохраняем файл
+      final bytes = excel.save();
+      if (bytes != null) {
+        final fileName = 'outlet_analytics_${DateFormat('yyyyMMdd').format(startDate)}_${DateFormat('yyyyMMdd').format(endDate)}';
+        
+        if (kIsWeb) {
+          final blob = html.Blob([bytes]);
+          final url = html.Url.createObjectUrlFromBlob(blob);
+          html.AnchorElement(href: url)
+            ..setAttribute('download', '$fileName.xlsx')
+            ..click();
+          html.Url.revokeObjectUrl(url);
+        } else {
+          await Share.shareXFiles(
+            [XFile.fromData(
+              Uint8List.fromList(bytes),
+              name: '$fileName.xlsx',
+              mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            )],
+            text: 'Экспорт аналитики по торговым точкам',
+          );
+        }
+      }
+    } finally {
+      _isExporting = false;
+    }
+  }
+
+  /// Экспорт аналитики продаж по товарам в Excel
+  static Future<void> exportProductAnalyticsToExcel({
+    required List<ProductAnalyticsData> productAnalyticsData,
+    required DateTime startDate,
+    required DateTime endDate,
+  }) async {
+    if (_isExporting) return;
+    _isExporting = true;
+
+    try {
+      if (productAnalyticsData.isEmpty) return;
+
+      final excel = Excel.createExcel();
+      final defaultSheetName = excel.sheets.keys.first;
+      excel.delete(defaultSheetName);
+      final sheet = excel['Аналитика по товарам'];
+
+      final cellStyle = CellStyle(
+        fontFamily: 'Times New Roman',
+        fontSize: 12,
+        horizontalAlign: HorizontalAlign.Center,
+        verticalAlign: VerticalAlign.Center,
+        bold: true,
+      );
+
+      final dataStyle = CellStyle(
+        fontFamily: 'Times New Roman',
+        fontSize: 11,
+        horizontalAlign: HorizontalAlign.Left,
+        verticalAlign: VerticalAlign.Center,
+      );
+
+      int currentRow = 0;
+
+      // Заголовок отчета
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: currentRow)).value = 
+          'Аналитика продаж по товарам';
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: currentRow)).cellStyle = cellStyle;
+      currentRow++;
+
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: currentRow)).value = 
+          'Период: ${DateFormat('dd.MM.yyyy').format(startDate)} - ${DateFormat('dd.MM.yyyy').format(endDate)}';
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: currentRow)).cellStyle = dataStyle;
+      currentRow++;
+      currentRow++;
+
+      // Заголовки таблицы
+      final headers = [
+        '№',
+        'Товар',
+        'Цена',
+        'Общая сумма продаж',
+        'Общее количество',
+        'Обычные продажи',
+        'Обычные продажи (сумма)',
+        'Бонусные продажи',
+        'Бонусные продажи (сумма)',
+      ];
+
+      for (int i = 0; i < headers.length; i++) {
+        final cell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: i, rowIndex: currentRow));
+        cell.value = headers[i];
+        cell.cellStyle = cellStyle;
+      }
+      currentRow++;
+
+      // Данные по товарам
+      for (int i = 0; i < productAnalyticsData.length; i++) {
+        final product = productAnalyticsData[i];
+
+        final cells = [
+          i + 1,
+          product.productName,
+          product.price,
+          product.totalSales,
+          product.totalQuantity,
+          product.regularQuantity,
+          product.regularAmount,
+          product.bonusQuantity,
+          product.bonusAmount,
+        ];
+
+        for (int j = 0; j < cells.length; j++) {
+          final cell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: j, rowIndex: currentRow));
+          cell.value = cells[j];
+          cell.cellStyle = dataStyle;
+        }
+        currentRow++;
+      }
+
+      // Итоги
+      currentRow++;
+      final totalSales = productAnalyticsData.fold<double>(0.0, (sum, product) => sum + product.totalSales);
+      final totalQuantity = productAnalyticsData.fold<int>(0, (sum, product) => sum + product.totalQuantity);
+      final totalRegularQuantity = productAnalyticsData.fold<int>(0, (sum, product) => sum + product.regularQuantity);
+      final totalRegularAmount = productAnalyticsData.fold<double>(0.0, (sum, product) => sum + product.regularAmount);
+      final totalBonusQuantity = productAnalyticsData.fold<int>(0, (sum, product) => sum + product.bonusQuantity);
+      final totalBonusAmount = productAnalyticsData.fold<double>(0.0, (sum, product) => sum + product.bonusAmount);
+
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: currentRow)).value = 'ИТОГО';
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: currentRow)).cellStyle = cellStyle;
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: currentRow)).value = totalSales;
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: currentRow)).cellStyle = cellStyle;
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: currentRow)).value = totalQuantity;
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: currentRow)).cellStyle = cellStyle;
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: currentRow)).value = totalRegularQuantity;
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: currentRow)).cellStyle = cellStyle;
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 6, rowIndex: currentRow)).value = totalRegularAmount;
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 6, rowIndex: currentRow)).cellStyle = cellStyle;
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 7, rowIndex: currentRow)).value = totalBonusQuantity;
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 7, rowIndex: currentRow)).cellStyle = cellStyle;
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 8, rowIndex: currentRow)).value = totalBonusAmount;
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 8, rowIndex: currentRow)).cellStyle = cellStyle;
+
+      // Сохраняем файл
+      final bytes = excel.save();
+      if (bytes != null) {
+        final fileName = 'product_analytics_${DateFormat('yyyyMMdd').format(startDate)}_${DateFormat('yyyyMMdd').format(endDate)}';
+        
+        if (kIsWeb) {
+          final blob = html.Blob([bytes]);
+          final url = html.Url.createObjectUrlFromBlob(blob);
+          html.AnchorElement(href: url)
+            ..setAttribute('download', '$fileName.xlsx')
+            ..click();
+          html.Url.revokeObjectUrl(url);
+        } else {
+          await Share.shareXFiles(
+            [XFile.fromData(
+              Uint8List.fromList(bytes),
+              name: '$fileName.xlsx',
+              mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            )],
+            text: 'Экспорт аналитики по товарам',
+          );
+        }
+      }
     } finally {
       _isExporting = false;
     }

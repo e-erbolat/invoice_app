@@ -6,6 +6,7 @@ class InvoiceItem {
   final double originalPrice; // Цена по прайсу (из каталога)
   final double totalPrice;
   final bool isBonus;
+  final String? satushiCode;
 
   const InvoiceItem({
     required this.productId,
@@ -15,6 +16,7 @@ class InvoiceItem {
     required this.originalPrice,
     required this.totalPrice,
     this.isBonus = false,
+    this.satushiCode,
   }) : assert(quantity > 0, 'Количество должно быть больше 0'),
        assert(price >= 0, 'Цена не может быть отрицательной'),
        assert(originalPrice >= 0, 'Оригинальная цена не может быть отрицательной'),
@@ -28,6 +30,7 @@ class InvoiceItem {
     required double price,
     required double originalPrice,
     bool isBonus = false,
+    String? satushiCode,
   }) {
     final totalPrice = isBonus ? 0.0 : quantity * price;
     return InvoiceItem(
@@ -38,6 +41,7 @@ class InvoiceItem {
       originalPrice: originalPrice,
       totalPrice: totalPrice,
       isBonus: isBonus,
+      satushiCode: satushiCode,
     );
   }
 
@@ -64,6 +68,7 @@ class InvoiceItem {
       'originalPrice': originalPrice,
       'totalPrice': totalPrice,
       'isBonus': isBonus,
+      if (satushiCode != null) 'satushiCode': satushiCode,
     };
   }
 
@@ -81,6 +86,7 @@ class InvoiceItem {
         originalPrice: (map['originalPrice'] as num).toDouble(),
         totalPrice: (map['totalPrice'] as num).toDouble(),
         isBonus: map['isBonus'] ?? false,
+        satushiCode: map['satushiCode'],
       );
     } else {
       // Старые данные без originalPrice - используем специальный метод
@@ -111,6 +117,7 @@ class InvoiceItem {
     double? originalPrice,
     double? totalPrice,
     bool? isBonus,
+    String? satushiCode,
   }) {
     return InvoiceItem(
       productId: productId ?? this.productId,
@@ -120,6 +127,7 @@ class InvoiceItem {
       originalPrice: originalPrice ?? this.originalPrice,
       totalPrice: totalPrice ?? this.totalPrice,
       isBonus: isBonus ?? this.isBonus,
+      satushiCode: satushiCode ?? this.satushiCode,
     );
   }
 
@@ -133,7 +141,8 @@ class InvoiceItem {
         other.price == price &&
         other.originalPrice == originalPrice &&
         other.totalPrice == totalPrice &&
-        other.isBonus == isBonus;
+        other.isBonus == isBonus &&
+        other.satushiCode == satushiCode;
   }
 
   @override
@@ -146,11 +155,12 @@ class InvoiceItem {
       originalPrice,
       totalPrice,
       isBonus,
+      satushiCode,
     );
   }
 
   @override
   String toString() {
-    return 'InvoiceItem(productId: $productId, productName: $productName, quantity: $quantity, price: $price, originalPrice: $originalPrice, totalPrice: $totalPrice, isBonus: $isBonus)';
+    return 'InvoiceItem(productId: $productId, productName: $productName, quantity: $quantity, price: $price, originalPrice: $originalPrice, totalPrice: $totalPrice, isBonus: $isBonus, satushiCode: $satushiCode)';
   }
 } 

@@ -8,6 +8,7 @@ class Product {
   final DateTime createdAt;
   final DateTime updatedAt;
   final String barcode;
+  final String? satushiCode;
 
   Product({
     required this.id,
@@ -19,6 +20,7 @@ class Product {
     required this.createdAt,
     required this.updatedAt,
     required this.barcode,
+    this.satushiCode,
   });
 
   Map<String, dynamic> toMap() {
@@ -32,6 +34,7 @@ class Product {
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
       'barcode': barcode,
+      if (satushiCode != null && satushiCode!.isNotEmpty) 'satushiCode': satushiCode,
     };
   }
 
@@ -46,6 +49,7 @@ class Product {
       createdAt: DateTime.parse(map['createdAt']),
       updatedAt: DateTime.parse(map['updatedAt']),
       barcode: map['barcode'] ?? '',
+      satushiCode: map['satushiCode'],
     );
   }
 } 

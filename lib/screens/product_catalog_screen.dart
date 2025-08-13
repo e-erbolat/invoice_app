@@ -49,6 +49,7 @@ class _ProductCatalogScreenState extends State<ProductCatalogScreen> {
     final categoryController = TextEditingController(text: product?.category ?? '');
     final stockController = TextEditingController(text: product?.stockQuantity.toString() ?? '');
     final barcodeController = TextEditingController(text: product?.barcode ?? '');
+    final satushiCodeController = TextEditingController(text: product?.satushiCode ?? '');
     
     final formKey = GlobalKey<FormState>();
     bool isSubmitting = false;
@@ -148,6 +149,15 @@ class _ProductCatalogScreenState extends State<ProductCatalogScreen> {
                     controller: barcodeController,
                     decoration: InputDecoration(labelText: 'Штрихкод'),
                   ),
+                  SizedBox(height: 16),
+                  TextFormField(
+                    controller: satushiCodeController,
+                    decoration: InputDecoration(
+                      labelText: 'Satushi Code',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.qr_code_2),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -176,6 +186,9 @@ class _ProductCatalogScreenState extends State<ProductCatalogScreen> {
                       createdAt: product?.createdAt ?? DateTime.now(),
                       updatedAt: DateTime.now(),
                       barcode: barcodeController.text.trim(),
+                      satushiCode: satushiCodeController.text.trim().isEmpty
+                          ? null
+                          : satushiCodeController.text.trim(),
                     );
                     print('Объект Product создан: ${newProduct.name}');
 

@@ -208,6 +208,7 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
       price: _price, // Фактическая цена (со скидкой)
       originalPrice: _selectedProduct!.price, // Цена по прайсу из каталога
       isBonus: _isBonus,
+      satushiCode: _selectedProduct!.satushiCode,
     );
 
     setState(() {

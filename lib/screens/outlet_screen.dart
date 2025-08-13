@@ -4,6 +4,8 @@ import '../services/firebase_service.dart';
 import '../services/auth_service.dart';
 import '../models/app_user.dart';
 import '../models/sales_rep.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../services/geocoding_service.dart';
 
 class OutletScreen extends StatefulWidget {
   @override
@@ -78,6 +80,9 @@ class _OutletScreenState extends State<OutletScreen> {
     final phoneController = TextEditingController(text: outlet?.phone ?? '');
     final contactController = TextEditingController(text: outlet?.contactPerson ?? '');
     final regionController = TextEditingController(text: outlet?.region ?? '');
+    final latController = TextEditingController(text: outlet?.latitude?.toString() ?? '');
+    final lngController = TextEditingController(text: outlet?.longitude?.toString() ?? '');
+    final geocoding = GeocodingService();
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -107,6 +112,67 @@ class _OutletScreenState extends State<OutletScreen> {
                 controller: regionController,
                 decoration: const InputDecoration(labelText: 'Регион'),
               ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: latController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(labelText: 'Latitude'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextField(
+                      controller: lngController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(labelText: 'Longitude'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () async {
+                        final addr = addressController.text.trim().isNotEmpty
+                            ? addressController.text.trim()
+                            : nameController.text.trim();
+                        if (addr.isEmpty) return;
+                        final res = await geocoding.geocodeAddress(addr);
+                        if (res != null) {
+                          latController.text = res.latitude.toStringAsFixed(6);
+                          lngController.text = res.longitude.toStringAsFixed(6);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Координаты заполнены')),
+                          );
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Не удалось определить координаты')),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.my_location),
+                      label: const Text('Определить по адресу'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        final query = Uri.encodeComponent(addressController.text.isNotEmpty ? addressController.text : nameController.text);
+                        final url = Uri.parse('https://www.google.com/maps/search/?api=1&query=$query');
+                        launchUrl(url);
+                      },
+                      icon: const Icon(Icons.map),
+                      label: const Text('Открыть карту'),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
@@ -128,6 +194,8 @@ class _OutletScreenState extends State<OutletScreen> {
                 creatorName: _currentUser?.email ?? '',
                 createdAt: outlet?.createdAt ?? DateTime.now(),
                 updatedAt: DateTime.now(),
+                latitude: double.tryParse(latController.text.replaceAll(',', '.')),
+                longitude: double.tryParse(lngController.text.replaceAll(',', '.')),
               );
               if (outlet == null) {
                 await _firebaseService.addOutlet(newOutlet);
@@ -174,9 +242,6 @@ class _OutletScreenState extends State<OutletScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Торговые точки'),
-      ),
       body: Column(
         children: [
           Padding(

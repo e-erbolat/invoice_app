@@ -14,6 +14,8 @@ import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import '../services/excel_export_service.dart';
 import 'package:file_saver/file_saver.dart' as fs;
+import '../services/satushi_api_service.dart';
+import '../services/auth_service.dart';
 
 class AdminPackingInvoicesScreen extends StatefulWidget {
   final bool forSales;
@@ -40,6 +42,41 @@ class _AdminPackingInvoicesScreenState extends State<AdminPackingInvoicesScreen>
   // Шрифты для PDF
   pw.Font? _regularFont;
   pw.Font? _boldFont;
+
+  // Вспомогательные парсеры адреса/телефона
+  String _normalizePhone(String input) {
+    final digits = input.replaceAll(RegExp('[^0-9]'), '');
+    if (digits.startsWith('8')) return '7${digits.substring(1)}';
+    return digits;
+  }
+
+  String? _extractApt(String address) {
+    final m = RegExp(r'(кв\.?\s*|апт\.?\s*|апартамент\s*)(\d+)').firstMatch(address.toLowerCase());
+    return m != null ? m.group(2) : '';
+  }
+
+  String? _extractBuilding(String address) {
+    final m = RegExp(r'(дом\s*|д\.\s*)(\d+[a-zA-Z]?)').firstMatch(address.toLowerCase());
+    return m != null ? m.group(2) : '';
+  }
+
+  String _extractDistrict(String address) {
+    // Возвращаем часть до запятой как район, если есть
+    return address.split(',').first.trim();
+  }
+
+  String _extractStreetName(String address) {
+    // Простой хелпер: уберём номер дома, вернём название улицы
+    final parts = address.split(',').first.split(' ');
+    if (parts.length <= 1) return address;
+    parts.removeWhere((p) => RegExp(r'^\d').hasMatch(p));
+    return parts.join(' ').trim();
+  }
+
+  String _extractStreetNumber(String address) {
+    final m = RegExp(r'(\d+[a-zA-Z]?)').firstMatch(address);
+    return m?.group(1) ?? '';
+  }
 
   @override
   void initState() {
@@ -143,6 +180,139 @@ class _AdminPackingInvoicesScreenState extends State<AdminPackingInvoicesScreen>
     });
   }
 
+  Future<void> _sendToSatushi(Invoice invoice) async {
+    try {
+      final user = await AuthService().getCurrentUser();
+      final token = user?.satushiToken;
+      if (token == null || token.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('satushiToken не задан в профиле')));
+        return;
+      }
+
+      // Найдём точку
+      final outlet = _outlets.firstWhere(
+        (o) => o.id == invoice.outletId || o.name == invoice.outletName,
+        orElse: () => Outlet(
+          id: invoice.outletId,
+          name: invoice.outletName,
+          address: invoice.outletAddress,
+          phone: '',
+          contactPerson: '',
+          region: '',
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+        ),
+      );
+
+      // map productId -> satushiCode если в item отсутствует
+      final allProducts = await _firebaseService.getProducts();
+      final Map<String, String?> idToSatushi = { for (final p in allProducts) p.id : p.satushiCode };
+
+      // Проверка наличия satushiCode
+      final missing = <String>[];
+      for (final it in invoice.items) {
+        final code = it.satushiCode ?? idToSatushi[it.productId];
+        if ((code == null || code.isEmpty) && !it.isBonus) {
+          missing.add(it.productName);
+        }
+      }
+      if (missing.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Нет satushiCode у: ${missing.join(', ')}')),
+        );
+        return;
+      }
+
+      if (outlet.latitude == null || outlet.longitude == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('У точки не указаны координаты (latitude/longitude)')),
+        );
+        return;
+      }
+
+      // Группируем товары по satushiCode, объединяя количество
+      final Map<String, Map<String, dynamic>> groupedProducts = {};
+      
+      for (final item in invoice.items) {
+        final code = item.satushiCode ?? idToSatushi[item.productId]!;
+        if (groupedProducts.containsKey(code)) {
+          // Если товар уже есть, суммируем количество и totalPrice
+          groupedProducts[code]!['quantity'] += item.quantity;
+          groupedProducts[code]!['totalPrice'] += item.totalPrice;
+        } else {
+          // Новый товар
+          groupedProducts[code] = {
+            'code': code,
+            'name': item.productName,
+            'imageMedium': '',
+            'weight': 0.0,
+            'deliveryCost': 0.0,
+            'quantity': item.quantity,
+            'link': '',
+            'basePrice': item.price,
+            'totalPrice': item.totalPrice,
+          };
+        }
+      }
+      
+      final products = groupedProducts.values.toList();
+
+      final body = {
+        'courierId': '',
+        'nonSmsOrder': false,
+        'orderType': 'SATU',
+        'photoRequired': false,
+        'totalPrice': invoice.totalAmount,
+        'cityId': '151010000',
+        'plannedDeliveryDate': invoice.date.toDate().millisecondsSinceEpoch,
+        'deliveryAddress': {
+          'apartment': _extractApt(outlet.address),
+          'building': _extractBuilding(outlet.address),
+          'district': _extractDistrict(outlet.address),
+          'formattedAddress': outlet.address.isNotEmpty ? '${outlet.name}, ${outlet.address}' : outlet.name,
+          'latitude': outlet.latitude,
+          'longitude': outlet.longitude,
+          'streetName': _extractStreetName(outlet.address),
+          'streetNumber': _extractStreetNumber(outlet.address),
+          'town': outlet.region.isNotEmpty ? outlet.region : 'Актобе',
+        },
+        'customer': {
+          'cellPhone': _normalizePhone(outlet.phone),
+          'firstName': outlet.contactPerson,
+          'lastName': '',
+          'name': outlet.contactPerson,
+        },
+        'deliveryMode': 'DELIVERY_LOCAL',
+        'products': products,
+      };
+
+      final api = SatushiApiService();
+      
+      // Детальная диагностика
+      debugPrint('[Satushi] === DIAGNOSTICS ===');
+      debugPrint('[Satushi] outlet: ${outlet.name}');
+      debugPrint('[Satushi] outlet.coords: ${outlet.latitude}, ${outlet.longitude}');
+      debugPrint('[Satushi] outlet.address: ${outlet.address}');
+      debugPrint('[Satushi] outlet.region: ${outlet.region}');
+      debugPrint('[Satushi] products count: ${products.length}');
+      debugPrint('[Satushi] body: $body');
+      debugPrint('[Satushi] ===================');
+      
+      final resp = await api.createCustomOrder(bearerToken: token, body: body);
+      if (resp.statusCode >= 200 && resp.statusCode < 300) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Заявка в Satushi создана')));
+        await _invoiceService.updateInvoiceStatus(invoice.id, InvoiceStatus.delivery);
+        _loadData();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка Satushi: ${resp.statusCode} ${resp.body}')),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка отправки: $e')));
+    }
+  }
+
   void _showConfirmDialog(Invoice invoice) {
     if (!widget.forSales) {
       showDialog(
@@ -158,8 +328,7 @@ class _AdminPackingInvoicesScreenState extends State<AdminPackingInvoicesScreen>
             ElevatedButton(
               onPressed: () async {
                 Navigator.pop(context);
-                await _invoiceService.updateInvoiceStatus(invoice.id, InvoiceStatus.delivery);
-                _loadData();
+                await _sendToSatushi(invoice);
               },
               child: Text('Передать'),
             ),

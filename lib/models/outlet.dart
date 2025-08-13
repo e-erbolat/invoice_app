@@ -9,6 +9,8 @@ class Outlet {
   final DateTime updatedAt;
   final String? creatorId;
   final String? creatorName;
+  final double? latitude;
+  final double? longitude;
 
   Outlet({
     required this.id,
@@ -21,6 +23,8 @@ class Outlet {
     required this.updatedAt,
     this.creatorId,
     this.creatorName,
+    this.latitude,
+    this.longitude,
   });
 
   Map<String, dynamic> toMap() {
@@ -35,6 +39,8 @@ class Outlet {
       'updatedAt': updatedAt.toIso8601String(),
       'creatorId': creatorId,
       'creatorName': creatorName,
+      if (latitude != null) 'latitude': latitude,
+      if (longitude != null) 'longitude': longitude,
     };
   }
 
@@ -50,6 +56,16 @@ class Outlet {
       updatedAt: DateTime.parse(map['updatedAt']),
       creatorId: map['creatorId'],
       creatorName: map['creatorName'],
+      latitude: _toDoubleOrNull(map['latitude']),
+      longitude: _toDoubleOrNull(map['longitude']),
     );
+  }
+
+  static double? _toDoubleOrNull(dynamic v) {
+    if (v == null) return null;
+    if (v is double) return v;
+    if (v is int) return v.toDouble();
+    if (v is String) return double.tryParse(v);
+    return null;
   }
 } 

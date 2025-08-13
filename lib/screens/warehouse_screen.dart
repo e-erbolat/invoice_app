@@ -4,6 +4,9 @@ import 'product_catalog_screen.dart';
 import 'catalog_create_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'catalog_detail_screen.dart';
+import 'product_procurement_screen.dart';
+import '../services/auth_service.dart';
+import '../models/app_user.dart';
 
 class WarehouseScreen extends StatefulWidget {
   const WarehouseScreen({Key? key}) : super(key: key);
@@ -15,11 +18,22 @@ class WarehouseScreen extends StatefulWidget {
 class _WarehouseScreenState extends State<WarehouseScreen> {
   List<Catalog> catalogs = [];
   bool _loading = true;
+  AppUser? _user;
 
   @override
   void initState() {
     super.initState();
+    _loadUser();
     _loadCatalogs();
+  }
+
+  Future<void> _loadUser() async {
+    final user = await AuthService().getCurrentUser();
+    if (mounted) {
+      setState(() {
+        _user = user;
+      });
+    }
   }
 
   Future<void> _loadCatalogs() async {
@@ -37,10 +51,28 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
       // Удалён appBar: AppBar(...)
       body: ListView.separated(
         padding: const EdgeInsets.all(16),
-        itemCount: 1 + (catalogs.isNotEmpty ? catalogs.length : 1),
+        itemCount: (_user?.role == 'admin' || _user?.role == 'superadmin' ? 2 : 1) + (catalogs.isNotEmpty ? catalogs.length : 1),
         separatorBuilder: (_, __) => const SizedBox(height: 12),
         itemBuilder: (context, i) {
-          if (i == 0) {
+          if (i == 0 && (_user?.role == 'admin' || _user?.role == 'superadmin')) {
+            // Новый функционал: Закуп товара (только для админов)
+            return Card(
+              color: Colors.green.shade50,
+              child: ListTile(
+                leading: const Icon(Icons.add_shopping_cart, color: Colors.green),
+                title: const Text('Закуп товара', style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: const Text('Переход в раздел закупа и прихода товара'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const ProductProcurementScreen()),
+                  );
+                },
+              ),
+            );
+          }
+          if (i == (_user?.role == 'admin' || _user?.role == 'superadmin' ? 1 : 0)) {
             // Первый пункт — общий склад
             return Card(
               color: Colors.deepPurple.shade50,
@@ -64,7 +96,7 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
           if (catalogs.isEmpty) {
             return const Center(child: Text('Каталоги отсутствуют'));
           }
-          final catalog = catalogs[i - 1];
+          final catalog = catalogs[i - (_user?.role == 'admin' || _user?.role == 'superadmin' ? 2 : 1)];
           return Card(
             child: ListTile(
               title: Text(catalog.name),
