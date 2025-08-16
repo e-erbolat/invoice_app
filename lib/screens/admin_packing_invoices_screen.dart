@@ -274,7 +274,7 @@ class _AdminPackingInvoicesScreenState extends State<AdminPackingInvoicesScreen>
           'longitude': outlet.longitude,
           'streetName': _extractStreetName(outlet.address),
           'streetNumber': _extractStreetNumber(outlet.address),
-          'town': outlet.region.isNotEmpty ? outlet.region : 'Актобе',
+          'town': (outlet.region != null && outlet.region!.isNotEmpty) ? outlet.region : 'Актобе',
         },
         'customer': {
           'cellPhone': _normalizePhone(outlet.phone),

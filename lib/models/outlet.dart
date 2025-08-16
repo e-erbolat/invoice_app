@@ -4,7 +4,7 @@ class Outlet {
   final String address;
   final String phone;
   final String contactPerson;
-  final String region;
+  final String? region;
   final DateTime createdAt;
   final DateTime updatedAt;
   final String? creatorId;
@@ -18,7 +18,7 @@ class Outlet {
     required this.address,
     required this.phone,
     required this.contactPerson,
-    required this.region,
+    this.region,
     required this.createdAt,
     required this.updatedAt,
     this.creatorId,
@@ -34,7 +34,7 @@ class Outlet {
       'address': address,
       'phone': phone,
       'contactPerson': contactPerson,
-      'region': region,
+      if (region != null && region!.isNotEmpty) 'region': region,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
       'creatorId': creatorId,
@@ -51,7 +51,7 @@ class Outlet {
       address: map['address'] ?? '',
       phone: map['phone'] ?? '',
       contactPerson: map['contactPerson'] ?? '',
-      region: map['region'] ?? '',
+      region: map['region'],
       createdAt: DateTime.parse(map['createdAt']),
       updatedAt: DateTime.parse(map['updatedAt']),
       creatorId: map['creatorId'],
