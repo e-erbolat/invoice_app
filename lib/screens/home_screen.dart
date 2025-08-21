@@ -12,6 +12,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
 import '../services/firebase_service.dart';
 import '../models/product.dart';
+import 'purchase_list_screen.dart';
 
 // Если есть отдельный экран профиля, импортируйте его, иначе будет заглушка
 
@@ -36,7 +37,9 @@ class _HomeScreenState extends State<HomeScreen> {
     SalesRepScreen(),
     // 3: Склад
     WarehouseScreen(),
-    // 4: Профиль
+    // 4: Закупы
+    const PurchaseListScreen(),
+    // 5: Профиль
     Center(child: Text('Профиль', style: TextStyle(fontSize: 24))),
   ];
 
@@ -193,6 +196,10 @@ class _HomeScreenState extends State<HomeScreen> {
           BottomNavigationBarItem(
             icon: Icon(Icons.inventory_2),
             label: 'Каталог',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.shopping_cart),
+            label: 'Закупы',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.person),
