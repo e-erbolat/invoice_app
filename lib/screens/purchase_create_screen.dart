@@ -1,14 +1,17 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import '../models/product.dart';
-import '../models/procurement_item.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/procurement.dart';
+import '../models/procurement_item.dart';
+import '../models/product.dart';
 import '../models/purchase_source.dart';
 import '../services/firebase_service.dart';
 import '../services/procurement_service.dart';
+import '../services/auth_service.dart';
+import '../models/app_user.dart';
 
 class PurchaseCreateScreen extends StatefulWidget {
-  const PurchaseCreateScreen({Key? key}) : super(key: key);
+  final Procurement? procurementToEdit;
+  const PurchaseCreateScreen({Key? key, this.procurementToEdit}) : super(key: key);
 
   @override
   State<PurchaseCreateScreen> createState() => _PurchaseCreateScreenState();
@@ -17,6 +20,7 @@ class PurchaseCreateScreen extends StatefulWidget {
 class _PurchaseCreateScreenState extends State<PurchaseCreateScreen> {
   final FirebaseService _firebaseService = FirebaseService();
   final ProcurementService _procurementService = ProcurementService();
+  final AuthService _authService = AuthService();
 
   List<Product> _products = [];
   List<PurchaseSource> _sources = [];
@@ -31,17 +35,40 @@ class _PurchaseCreateScreenState extends State<PurchaseCreateScreen> {
   bool _loading = true;
   bool _submitting = false;
   final List<ProcurementItem> _items = [];
+  bool get isEditMode => widget.procurementToEdit != null;
+  AppUser? _currentUser;
 
   @override
   void initState() {
     super.initState();
     _init();
+    _loadCurrentUser();
+  }
+
+  Future<void> _loadCurrentUser() async {
+    final user = await _authService.getCurrentUser();
+    if (mounted) {
+      setState(() {
+        _currentUser = user;
+      });
+    }
   }
 
   Future<void> _init() async {
     setState(() { _loading = true; });
     final products = await _firebaseService.getProducts();
     final sources = await _procurementService.getSources();
+    
+    if (isEditMode && widget.procurementToEdit != null) {
+      final procurement = widget.procurementToEdit!;
+      _selectedSource = sources.firstWhere(
+        (s) => s.id == procurement.sourceId,
+        orElse: () => sources.first,
+      );
+      _selectedDate = procurement.date.toDate();
+      _items.addAll(procurement.items);
+    }
+    
     setState(() {
       _products = products;
       _sources = sources;
@@ -89,19 +116,36 @@ class _PurchaseCreateScreenState extends State<PurchaseCreateScreen> {
     }
     setState(() { _submitting = true; });
     try {
-      final procurement = Procurement(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        sourceId: _selectedSource!.id,
-        sourceName: _selectedSource!.name,
-        date: Timestamp.fromDate(_selectedDate),
-        items: _items,
-        totalAmount: _totalAmount,
-        status: ProcurementStatus.purchase,
-      );
-      await _procurementService.createProcurement(procurement);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Закуп сохранён')));
-        Navigator.pop(context);
+      if (isEditMode && widget.procurementToEdit != null) {
+        // Обновляем существующий закуп
+        final updatedProcurement = widget.procurementToEdit!.copyWith(
+          sourceId: _selectedSource!.id,
+          sourceName: _selectedSource!.name,
+          date: Timestamp.fromDate(_selectedDate),
+          items: _items,
+          totalAmount: _totalAmount,
+        );
+        await _procurementService.updateProcurement(updatedProcurement);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Закуп обновлён')));
+          Navigator.pop(context);
+        }
+      } else {
+        // Создаём новый закуп
+        final procurement = Procurement(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          sourceId: _selectedSource!.id,
+          sourceName: _selectedSource!.name,
+          date: Timestamp.fromDate(_selectedDate),
+          items: _items,
+          totalAmount: _totalAmount,
+          status: ProcurementStatus.purchase.index,
+        );
+        await _procurementService.createProcurement(procurement);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Закуп сохранён')));
+          Navigator.pop(context);
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -155,11 +199,104 @@ class _PurchaseCreateScreenState extends State<PurchaseCreateScreen> {
     }
   }
 
+  Future<void> _rejectProcurement() async {
+    if (!isEditMode) return; // Только для редактирования
+    
+    // Показываем диалог подтверждения
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Отклонить закуп'),
+        content: Text('Вы уверены, что хотите вернуть закуп "${widget.procurementToEdit!.sourceName}" на предыдущий этап?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Отмена'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Отклонить', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        // Определяем предыдущий статус в зависимости от текущего
+        int previousStatus;
+        String statusMessage;
+        
+        switch (widget.procurementToEdit!.status) {
+          case ProcurementStatus.arrival:
+            previousStatus = ProcurementStatus.purchase.index;
+            statusMessage = 'Закуп возвращен в статус "Закуп товара"';
+            break;
+          case ProcurementStatus.shortage:
+            previousStatus = ProcurementStatus.arrival.index;
+            statusMessage = 'Закуп возвращен в статус "Приход товара"';
+            break;
+          case ProcurementStatus.forSale:
+            previousStatus = ProcurementStatus.arrival.index;
+            statusMessage = 'Закуп возвращен в статус "Приход товара"';
+            break;
+          default:
+            // Для закупа в статусе "purchase" нельзя отклонить
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Закуп в статусе "Закуп товара" нельзя отклонить'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+            return;
+        }
+
+        // Обновляем статус закупа
+        await _procurementService.updateProcurementStatus(
+          widget.procurementToEdit!.id, 
+          previousStatus
+        );
+        
+        // Показываем уведомление об успехе
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(statusMessage),
+              backgroundColor: Colors.green,
+            ),
+          );
+          
+          // Возвращаемся на предыдущий экран
+          Navigator.pop(context, true);
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Ошибка при отклонении закупа: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Создать закуп'),
+        title: Text(isEditMode ? 'Редактировать закуп' : 'Создать закуп'),
+        actions: [
+          // Кнопка отклонения для суперадмина в режиме редактирования
+          if (isEditMode && _currentUser?.role == 'superadmin')
+            IconButton(
+              icon: const Icon(Icons.undo, color: Colors.orange),
+              tooltip: 'Отклонить закуп',
+              onPressed: _rejectProcurement,
+            ),
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -327,7 +464,7 @@ class _PurchaseCreateScreenState extends State<PurchaseCreateScreen> {
                     height: 48,
                     child: ElevatedButton(
                       onPressed: _submitting ? null : _save,
-                      child: Text(_submitting ? 'Сохранение...' : 'Сохранить закуп'),
+                      child: Text(_submitting ? 'Сохранение...' : (isEditMode ? 'Обновить закуп' : 'Сохранить закуп')),
                     ),
                   ),
                 ],

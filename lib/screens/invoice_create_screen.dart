@@ -316,14 +316,19 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(isEditMode ? 'Редактировать накладную' : 'Создать накладную'),
-        backgroundColor: Colors.blue,
-        foregroundColor: Colors.white,
+        backgroundColor: Colors.white,
+        elevation: 2,
+        title: Text(
+          isEditMode ? 'Редактировать накладную' : 'Создать накладную',
+          style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+        ),
+        centerTitle: false,
+        iconTheme: const IconThemeData(color: Colors.black),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 132),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -537,6 +542,13 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
                       width: double.infinity,
                       child: ElevatedButton(
                         onPressed: _selectedProduct != null ? _addProductItem : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
                         child: const Text('Добавить товар'),
                       ),
                     ),
@@ -689,23 +701,34 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
               ),
             ),
             
+            // Дополнительное пространство внизу, чтобы контент не упирался в фиксированную нижнюю панель
             const SizedBox(height: 24),
-            
-            // Кнопка сохранения
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton(
-                onPressed: _isSubmitting ? null : _saveInvoice,
-                child: Text(
-                  _isSubmitting
-                    ? (isEditMode ? 'Сохранение...' : 'Сохранение...')
-                    : (isEditMode ? 'Сохранить изменения' : 'Создать накладную'),
-                  style: const TextStyle(fontSize: 16),
+          ],
+        ),
+      ),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+          child: SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: ElevatedButton(
+              onPressed: _isSubmitting ? null : _saveInvoice,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
               ),
+              child: Text(
+                _isSubmitting
+                  ? (isEditMode ? 'Сохранение...' : 'Сохранение...')
+                  : (isEditMode ? 'Сохранить изменения' : 'Создать накладную'),
+                style: const TextStyle(fontSize: 16),
+              ),
             ),
-          ],
+          ),
         ),
       ),
     );

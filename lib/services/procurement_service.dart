@@ -30,6 +30,10 @@ class ProcurementService {
     await _firestore.collection('procurements').doc(procurement.id).set(procurement.toMap());
   }
 
+  Future<void> updateProcurement(Procurement procurement) async {
+    await _firestore.collection('procurements').doc(procurement.id).update(procurement.toMap());
+  }
+
   Future<List<Procurement>> getProcurements() async {
     final snap = await _firestore.collection('procurements').orderBy('date', descending: true).get();
     return snap.docs.map((d) => Procurement.fromMap(d.data())).toList();

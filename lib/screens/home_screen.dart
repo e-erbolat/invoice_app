@@ -15,6 +15,7 @@ import '../models/product.dart';
 import '../services/cash_register_service.dart';
 import '../services/invoice_service.dart';
 import '../models/invoice.dart';
+import 'analytics_screen.dart';
 import 'profile_screen.dart';
 
 // Если есть отдельный экран профиля, импортируйте его, иначе будет заглушка
@@ -46,7 +47,7 @@ class _HomeScreenState extends State<HomeScreen> {
     OutletScreen(),
     SalesRepScreen(),
     WarehouseScreen(),
-    ProfileScreen(),
+    AnalyticsScreen(),
   ];
 
   @override
@@ -141,11 +142,7 @@ class _HomeScreenState extends State<HomeScreen> {
           {'emoji': '💰', 'label': 'Касса', 'route': '/cash_register'},
         if (_user?.role == 'admin' || _user?.role == 'superadmin')
           {'emoji': '💸', 'label': 'Расходы', 'route': '/cash_expenses'},
-                    if (_user?.role == 'admin' || _user?.role == 'superadmin') ...[
-              {'emoji': '📊', 'label': 'Аналитика по торговым точкам', 'route': '/outlet_analytics'},
-              {'emoji': '📈', 'label': 'Аналитика по товарам', 'route': '/product_analytics'},
-              {'emoji': '📤', 'label': 'Экспорт данных', 'route': '/data_export'},
-            ],
+
       ]
     ];
     return Column(
@@ -250,6 +247,8 @@ class _HomeScreenState extends State<HomeScreen> {
         {'icon': Icons.location_city, 'label': 'Отчёт по точкам', 'route': '/outlet_report'},
       if (isAdmin)
         {'icon': Icons.people_alt, 'label': 'Отчёт по представителям', 'route': '/sales_rep_report'},
+      if (isAdmin)
+        {'icon': Icons.file_upload, 'label': 'Импорт данных', 'route': '/import'},
       {'icon': Icons.add_box, 'label': 'Создать накладную', 'route': '/create_invoice'},
     ];
 
@@ -260,14 +259,14 @@ class _HomeScreenState extends State<HomeScreen> {
       if (_selectedIndex == 1) appBarTitle = 'Торговые точки';
       if (_selectedIndex == 2) appBarTitle = 'Торговые представители';
       if (_selectedIndex == 3) appBarTitle = 'Каталоги';
-      if (_selectedIndex == 4) appBarTitle = 'Профиль';
+      if (_selectedIndex == 4) appBarTitle = 'Аналитика';
     } else {
       // Для торговых представителей
       appBarTitle = 'Мои накладные';
       if (_selectedIndex == 1) appBarTitle = 'Торговые точки';
       if (_selectedIndex == 2) appBarTitle = 'Торговые представители';
       if (_selectedIndex == 3) appBarTitle = 'Каталоги';
-      if (_selectedIndex == 4) appBarTitle = 'Профиль';
+      if (_selectedIndex == 4) appBarTitle = 'Аналитика';
     }
     return Scaffold(
       backgroundColor: const Color(0xFFFCF8FF),
@@ -314,45 +313,34 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
             ),
-          if (_selectedIndex == 4) ...[
-            IconButton(
-              icon: const Icon(Icons.settings, color: Colors.black),
-              onPressed: () async {
-                final user = await AuthService().getCurrentUser();
-                if (user == null) return;
-                showModalBottomSheet(
-                  context: context,
-                  isScrollControlled: true,
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-                  ),
-                  builder: (_) => ProfileSettingsSheet(user: user),
-                );
-              },
-              tooltip: 'Настройки',
-            ),
-            IconButton(
-              icon: const Icon(Icons.logout, color: Colors.black),
-              onPressed: () async {
-                await AuthService().signOut();
-                if (mounted) {
-                  Navigator.pushReplacementNamed(context, '/login');
-                }
-              },
-              tooltip: 'Выйти',
-            ),
-          ] else ...[
-            IconButton(
-              icon: const Icon(Icons.logout, color: Colors.black),
-              onPressed: () async {
-                await AuthService().signOut();
-                if (mounted) {
-                  Navigator.pushReplacementNamed(context, '/login');
-                }
-              },
-              tooltip: 'Выйти',
-            ),
-          ],
+          // Кнопка профиля для всех вкладок
+          IconButton(
+            icon: const Icon(Icons.person, color: Colors.black),
+            onPressed: () async {
+              final user = await AuthService().getCurrentUser();
+              if (user == null) return;
+              showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+                ),
+                builder: (_) => ProfileSettingsSheet(user: user),
+              );
+            },
+            tooltip: 'Профиль',
+          ),
+
+          IconButton(
+            icon: const Icon(Icons.logout, color: Colors.black),
+            onPressed: () async {
+              await AuthService().signOut();
+              if (mounted) {
+                Navigator.pushReplacementNamed(context, '/login');
+              }
+            },
+            tooltip: 'Выйти',
+          ),
         ],
       ),
       body: _selectedIndex == 0
@@ -388,8 +376,8 @@ class _HomeScreenState extends State<HomeScreen> {
             label: 'Каталог',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.person),
-            label: 'Профиль',
+            icon: Icon(Icons.analytics),
+            label: 'Аналитика',
           ),
         ],
       ),

@@ -3,6 +3,10 @@ import 'purchase_create_screen.dart';
 import '../services/procurement_service.dart';
 import '../models/procurement.dart';
 import 'purchase_detail_screen.dart';
+import '../services/auth_service.dart';
+import '../models/app_user.dart';
+import 'arrival_verification_screen.dart';
+import 'goods_receiving_screen.dart'; // Новый импорт
 
 class ProductProcurementScreen extends StatefulWidget {
   const ProductProcurementScreen({Key? key}) : super(key: key);
@@ -13,27 +17,39 @@ class ProductProcurementScreen extends StatefulWidget {
 
 class _ProductProcurementScreenState extends State<ProductProcurementScreen> {
   final ProcurementService _procurementService = ProcurementService();
+  final AuthService _authService = AuthService();
   bool _loading = true;
   List<Procurement> _purchases = [];
   List<Procurement> _arrivals = [];
   List<Procurement> _shortages = [];
   List<Procurement> _forSales = [];
   String? _error;
+  AppUser? _currentUser;
 
   @override
   void initState() {
     super.initState();
     _load();
+    _loadCurrentUser();
+  }
+
+  Future<void> _loadCurrentUser() async {
+    final user = await _authService.getCurrentUser();
+    if (mounted) {
+      setState(() {
+        _currentUser = user;
+      });
+    }
   }
 
   Future<void> _load() async {
     setState(() { _loading = true; _error = null; });
     try {
       final results = await Future.wait<List<Procurement>>([
-        _procurementService.getProcurementsByStatus(ProcurementStatus.purchase),
-        _procurementService.getProcurementsByStatus(ProcurementStatus.arrival),
-        _procurementService.getProcurementsByStatus(ProcurementStatus.shortage),
-        _procurementService.getProcurementsByStatus(ProcurementStatus.forSale),
+        _procurementService.getProcurementsByStatus(ProcurementStatus.purchase.index),
+        _procurementService.getProcurementsByStatus(ProcurementStatus.arrival.index),
+        _procurementService.getProcurementsByStatus(ProcurementStatus.shortage.index),
+        _procurementService.getProcurementsByStatus(ProcurementStatus.forSale.index),
       ]);
       if (!mounted) return;
       setState(() {
@@ -53,17 +69,132 @@ class _ProductProcurementScreenState extends State<ProductProcurementScreen> {
   }
 
   Future<void> _acceptToArrival(Procurement p) async {
-    await _procurementService.updateProcurementStatus(p.id, ProcurementStatus.arrival);
+    await _procurementService.updateProcurementStatus(p.id, ProcurementStatus.arrival.index);
     _load();
   }
 
   Future<void> _moveToShortage(Procurement p) async {
-    await _procurementService.updateProcurementStatus(p.id, ProcurementStatus.shortage);
+    await _procurementService.updateProcurementStatus(p.id, ProcurementStatus.shortage.index);
     _load();
   }
 
   Future<void> _moveToForSale(Procurement p) async {
-    await _procurementService.updateProcurementStatus(p.id, ProcurementStatus.forSale);
+    await _procurementService.updateProcurementStatus(p.id, ProcurementStatus.forSale.index);
+    _load();
+  }
+
+  Future<void> _editProcurement(Procurement p) async {
+    // Навигация на экран редактирования
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PurchaseCreateScreen(procurementToEdit: p),
+      ),
+    );
+    _load(); // Перезагружаем данные после редактирования
+  }
+
+  Future<void> _openArrivalVerification(Procurement p) async {
+    // Навигация на экран сверки прихода
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ArrivalVerificationScreen(procurement: p),
+      ),
+    );
+    
+    // Если сверка была завершена, перезагружаем данные
+    if (result == true) {
+      _load();
+    }
+  }
+
+  Future<void> _rejectProcurement(Procurement p) async {
+    // Показываем диалог подтверждения
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Отклонить закуп'),
+        content: Text('Вы уверены, что хотите вернуть закуп "${p.sourceName}" на предыдущий этап?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Отмена'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Отклонить', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        // Определяем предыдущий статус в зависимости от текущего
+        int previousStatus;
+        String statusMessage;
+        
+        switch (p.status) {
+          case ProcurementStatus.arrival:
+            previousStatus = ProcurementStatus.purchase.index;
+            statusMessage = 'Закуп возвращен в статус "Закуп товара"';
+            break;
+          case ProcurementStatus.shortage:
+            previousStatus = ProcurementStatus.arrival.index;
+            statusMessage = 'Закуп возвращен в статус "Приход товара"';
+            break;
+          case ProcurementStatus.forSale:
+            previousStatus = ProcurementStatus.arrival.index;
+            statusMessage = 'Закуп возвращен в статус "Приход товара"';
+            break;
+          default:
+            // Для закупа в статусе "purchase" нельзя отклонить
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Закуп в статусе "Закуп товара" нельзя отклонить'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+            return;
+        }
+
+        // Обновляем статус закупа
+        await _procurementService.updateProcurementStatus(p.id, previousStatus);
+        
+        // Показываем уведомление об успехе
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(statusMessage),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+        
+        // Перезагружаем данные
+        _load();
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Ошибка при отклонении закупа: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _openGoodsReceiving(Procurement p) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => GoodsReceivingScreen(procurement: p),
+      ),
+    );
     _load();
   }
 
@@ -74,8 +205,22 @@ class _ProductProcurementScreenState extends State<ProductProcurementScreen> {
       child: ListTile(
         leading: const Icon(Icons.shopping_bag, color: Colors.blue),
         title: Text(p.sourceName, style: const TextStyle(fontWeight: FontWeight.w600)),
-        subtitle: Text(
-          'Дата: ${p.date.toDate().day.toString().padLeft(2,'0')}.${p.date.toDate().month.toString().padLeft(2,'0')}.${p.date.toDate().year}  •  Итого: ${p.totalAmount.toStringAsFixed(2)} ₸',
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Дата: ${p.date.toDate().day.toString().padLeft(2,'0')}.${p.date.toDate().month.toString().padLeft(2,'0')}.${p.date.toDate().year}  •  Итого: ${p.totalAmount.toStringAsFixed(2)} ₸',
+            ),
+            if (p.status == ProcurementStatus.shortage && p.items.isNotEmpty && p.items.first.procurementId != null)
+              Text(
+                'Из закупа: ${p.items.first.procurementId}',
+                style: const TextStyle(
+                  color: Colors.red,
+                  fontSize: 12,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+          ],
         ),
         trailing: trailingActions.isEmpty
             ? null
@@ -150,7 +295,37 @@ class _ProductProcurementScreenState extends State<ProductProcurementScreen> {
                           itemBuilder: (context, i) {
                             final p = _purchases[i];
                             return _buildCard(p, trailingActions: [
-                              ElevatedButton(onPressed: () => _acceptToArrival(p), child: const Text('Принять')),
+                              // Кнопка редактирования для суперадмина
+                              if (_currentUser?.role == 'superadmin')
+                                IconButton(
+                                  icon: const Icon(Icons.edit, color: Colors.blue),
+                                  tooltip: 'Редактировать',
+                                  onPressed: () => _editProcurement(p),
+                                ),
+                              if (_currentUser?.role == 'superadmin')
+                                const SizedBox(width: 8),
+                              // Кнопка отклонения для суперадмина
+                              if (_currentUser?.role == 'superadmin')
+                                IconButton(
+                                  icon: const Icon(Icons.undo, color: Colors.orange),
+                                  tooltip: 'Отклонить',
+                                  onPressed: () => _rejectProcurement(p),
+                                ),
+                              if (_currentUser?.role == 'superadmin')
+                                const SizedBox(width: 8),
+                              ElevatedButton(
+                                onPressed: () => _acceptToArrival(p),
+                                child: const Text('Принять'),
+                              ),
+                              const SizedBox(width: 8),
+                              ElevatedButton(
+                                onPressed: () => _openGoodsReceiving(p),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.green,
+                                  foregroundColor: Colors.white,
+                                ),
+                                child: const Text('Приемка'),
+                              ),
                             ]);
                           },
                         ),
@@ -164,9 +339,33 @@ class _ProductProcurementScreenState extends State<ProductProcurementScreen> {
                           itemBuilder: (context, i) {
                             final p = _arrivals[i];
                             return _buildCard(p, trailingActions: [
+                              // Кнопка редактирования для суперадмина
+                              if (_currentUser?.role == 'superadmin')
+                                IconButton(
+                                  icon: const Icon(Icons.edit, color: Colors.blue),
+                                  tooltip: 'Редактировать',
+                                  onPressed: () => _editProcurement(p),
+                                ),
+                              if (_currentUser?.role == 'superadmin')
+                                const SizedBox(width: 8),
+                              // Кнопка отклонения для суперадмина
+                              if (_currentUser?.role == 'superadmin')
+                                IconButton(
+                                  icon: const Icon(Icons.undo, color: Colors.orange),
+                                  tooltip: 'Отклонить',
+                                  onPressed: () => _rejectProcurement(p),
+                                ),
+                              if (_currentUser?.role == 'superadmin')
+                                const SizedBox(width: 8),
                               OutlinedButton(onPressed: () => _moveToShortage(p), child: const Text('Недостача')),
                               const SizedBox(width: 8),
                               ElevatedButton(onPressed: () => _moveToForSale(p), child: const Text('Выставка')),
+                              const SizedBox(width: 8),
+                              IconButton(
+                                icon: const Icon(Icons.receipt_long, color: Colors.green),
+                                tooltip: 'Сверка',
+                                onPressed: () => _openArrivalVerification(p),
+                              ),
                             ]);
                           },
                         ),
@@ -180,6 +379,24 @@ class _ProductProcurementScreenState extends State<ProductProcurementScreen> {
                           itemBuilder: (context, i) {
                             final p = _shortages[i];
                             return _buildCard(p, trailingActions: [
+                              // Кнопка редактирования для суперадмина
+                              if (_currentUser?.role == 'superadmin')
+                                IconButton(
+                                  icon: const Icon(Icons.edit, color: Colors.blue),
+                                  tooltip: 'Редактировать',
+                                  onPressed: () => _editProcurement(p),
+                                ),
+                              if (_currentUser?.role == 'superadmin')
+                                const SizedBox(width: 8),
+                              // Кнопка отклонения для суперадмина
+                              if (_currentUser?.role == 'superadmin')
+                                IconButton(
+                                  icon: const Icon(Icons.undo, color: Colors.orange),
+                                  tooltip: 'Отклонить',
+                                  onPressed: () => _rejectProcurement(p),
+                                ),
+                              if (_currentUser?.role == 'superadmin')
+                                const SizedBox(width: 8),
                               ElevatedButton(onPressed: () => _moveToForSale(p), child: const Text('Выставка')),
                             ]);
                           },
@@ -193,7 +410,24 @@ class _ProductProcurementScreenState extends State<ProductProcurementScreen> {
                           separatorBuilder: (_, __) => const SizedBox(height: 12),
                           itemBuilder: (context, i) {
                             final p = _forSales[i];
-                            return _buildCard(p);
+                            return _buildCard(p, trailingActions: [
+                              // Кнопка редактирования для суперадмина
+                              if (_currentUser?.role == 'superadmin')
+                                IconButton(
+                                  icon: const Icon(Icons.edit, color: Colors.blue),
+                                  tooltip: 'Редактировать',
+                                  onPressed: () => _editProcurement(p),
+                                ),
+                              if (_currentUser?.role == 'superadmin')
+                                const SizedBox(width: 8),
+                              // Кнопка отклонения для суперадмина
+                              if (_currentUser?.role == 'superadmin')
+                                IconButton(
+                                  icon: const Icon(Icons.undo, color: Colors.orange),
+                                  tooltip: 'Отклонить',
+                                  onPressed: () => _rejectProcurement(p),
+                                ),
+                            ]);
                           },
                         ),
                 ],
