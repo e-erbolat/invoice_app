@@ -65,7 +65,6 @@ class _AdminDeliveredInvoicesScreenState extends State<AdminDeliveredInvoicesScr
       if (widget.forSales) {
         final user = await AuthService().getCurrentUser();
         if (user == null) throw Exception('Пользователь не найден');
-        print('[AdminDeliveredInvoicesScreen] Текущий пользователь: uid=${user.uid}, role=${user.role}, salesRepId=${user.salesRepId}');
         if (user.salesRepId == null) throw Exception('У пользователя не заполнен salesRepId!');
         invoices = await _invoiceService.getInvoicesByStatusAndSalesRepSimple(InvoiceStatus.delivered, user.salesRepId!);
       } else {
@@ -78,16 +77,7 @@ class _AdminDeliveredInvoicesScreenState extends State<AdminDeliveredInvoicesScr
         _salesReps = salesReps;
         _isLoading = false;
       });
-      
-      // Добавляем отладочную информацию
-      print('[AdminDeliveredInvoicesScreen] Загружено накладных: ${invoices.length}');
-      for (var invoice in invoices) {
-        print('[AdminDeliveredInvoicesScreen] Накладная ${invoice.id}: статус = ${invoice.status}');
-      }
-      
-      debugPrint('[AdminDeliveredInvoicesScreen] Загружено накладных: "${invoices.length.toString()}"');
     } catch (e, st) {
-      debugPrint('[AdminDeliveredInvoicesScreen] Ошибка: $e\n$st');
       setState(() {
         _errorMessage = e.toString();
         _isLoading = false;
@@ -342,10 +332,9 @@ class _AdminDeliveredInvoicesScreenState extends State<AdminDeliveredInvoicesScr
                             : (bankAmount > 0)
                                 ? 'bank'
                                 : 'cash';
-                        await _invoiceService.updateInvoicePayment(invoice.id, isPaid, paymentType, comment,
+                        await _invoiceService.updateInvoicePayment(invoice.id, paymentType, comment,
                             bankAmount: bankAmount, cashAmount: cashAmount);
                         await _invoiceService.updateInvoiceStatus(invoice.id, InvoiceStatus.paymentChecked);
-                        await _invoiceService.updateInvoiceAcceptedByAdmin(invoice.id, true);
                         _loadData();
                       }
                     : null,
@@ -589,7 +578,6 @@ class _AdminDeliveredInvoicesScreenState extends State<AdminDeliveredInvoicesScr
                                              final cash = _cashAmounts[inv.id] ?? 0.0;
                                              await _invoiceService.updateInvoicePayment(
                                                inv.id,
-                                               true, // isPaid = true
                                                (bank > 0 && cash > 0)
                                                    ? 'mixed'
                                                    : (bank > 0)
@@ -603,7 +591,6 @@ class _AdminDeliveredInvoicesScreenState extends State<AdminDeliveredInvoicesScr
                                                inv.id,
                                                InvoiceStatus.paymentChecked, // Переводим в статус "Проверка оплат"
                                              );
-                                             await _invoiceService.updateInvoiceAcceptedByAdmin(inv.id, true);
                                            }
                                            _loadData();
                                          }
@@ -864,7 +851,6 @@ class _AdminDeliveredInvoicesScreenState extends State<AdminDeliveredInvoicesScr
                               ? () async {
                                   await _invoiceService.updateInvoicePayment(
                                     invoice.id,
-                                    true,
                                     (bank > 0 && cash > 0)
                                         ? 'mixed'
                                         : (bank > 0)
@@ -874,13 +860,9 @@ class _AdminDeliveredInvoicesScreenState extends State<AdminDeliveredInvoicesScr
                                     bankAmount: bank,
                                     cashAmount: cash,
                                   );
-                                  await _invoiceService.updateInvoice(
-                                    invoice.copyWith(
-                                      status: InvoiceStatus.paymentChecked,
-                                      acceptedByAdmin: true,
-                                      bankAmount: bank,
-                                      cashAmount: cash,
-                                    ),
+                                  await _invoiceService.updateInvoiceStatus(
+                                    invoice.id,
+                                    InvoiceStatus.paymentChecked, // Переводим в статус "Проверка оплат"
                                   );
                                   _loadData();
                                 }

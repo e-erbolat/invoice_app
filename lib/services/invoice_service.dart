@@ -336,10 +336,11 @@ class InvoiceService {
   }
 
   // Обновить оплату, тип оплаты и комментарий по id накладной
-  Future<void> updateInvoicePayment(String invoiceId, bool isPaid, String? paymentType, String? comment, {double? bankAmount, double? cashAmount}) async {
+  Future<void> updateInvoicePayment(String invoiceId, String? paymentType, String? comment, {double? bankAmount, double? cashAmount}) async {
     try {
       await _firestore.collection('invoices').doc(invoiceId).update({
-        'isPaid': isPaid,
+        'acceptedByAdmin': true,
+        'isPaid': true,
         'paymentType': paymentType,
         'paymentComment': comment,
         if (bankAmount != null) 'bankAmount': bankAmount,
@@ -347,17 +348,6 @@ class InvoiceService {
       });
     } catch (e) {
       throw Exception('Ошибка обновления оплаты накладной: $e');
-    }
-  }
-
-  // Обновить статус принятия админом
-  Future<void> updateInvoiceAcceptedByAdmin(String invoiceId, bool acceptedByAdmin) async {
-    try {
-      await _firestore.collection('invoices').doc(invoiceId).update({
-        'acceptedByAdmin': acceptedByAdmin,
-      });
-    } catch (e) {
-      throw Exception('Ошибка обновления статуса принятия админом: $e');
     }
   }
 
