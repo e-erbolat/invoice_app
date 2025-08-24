@@ -64,10 +64,6 @@ class _AdminIncomingInvoicesScreenState extends State<AdminIncomingInvoicesScree
         _outlets = outlets;
         _isLoading = false;
       });
-      print('[DEBUG] После фильтрации (по умолчанию): ${_filteredInvoices.length}');
-      for (final inv in _filteredInvoices) {
-        print('[DEBUG] [FILTERED] Invoice id=${inv.id}, status=${inv.status} (type: ${inv.status.runtimeType}), salesRepId=${inv.salesRepId}, outletId=${inv.outletId}');
-      }
     } catch (e, st) {
       debugPrint('[AdminIncomingInvoicesScreen] Ошибка: $e\n$st');
       setState(() {
@@ -79,27 +75,19 @@ class _AdminIncomingInvoicesScreenState extends State<AdminIncomingInvoicesScree
 
   void _filterInvoices() {
     List<Invoice> filtered = _invoices;
-    print('[DEBUG] Фильтрация накладных: всего ${filtered.length}');
     if (_selectedSalesRepId != null && _selectedSalesRepId != 'all') {
       filtered = filtered.where((inv) => inv.salesRepId == _selectedSalesRepId).toList();
-      print('[DEBUG] После фильтрации по salesRepId ($_selectedSalesRepId): ${filtered.length}');
     }
 
     if (_dateFrom != null) {
       filtered = filtered.where((inv) => inv.date.toDate().isAfter(_dateFrom!) || inv.date.toDate().isAtSameMomentAs(_dateFrom!)).toList();
-      print('[DEBUG] После фильтрации по дате с ($_dateFrom): ${filtered.length}');
     }
     if (_dateTo != null) {
       filtered = filtered.where((inv) => inv.date.toDate().isBefore(_dateTo!.add(const Duration(days: 1)))).toList();
-      print('[DEBUG] После фильтрации по дате по ($_dateTo): ${filtered.length}');
     }
     setState(() {
       _filteredInvoices = filtered;
     });
-    print('[DEBUG] Итоговое количество накладных после всех фильтров: ${_filteredInvoices.length}');
-    for (final inv in _filteredInvoices) {
-      print('[DEBUG] [FINAL] Invoice id=${inv.id}, status=${inv.status} (type: ${inv.status.runtimeType}), salesRepId=${inv.salesRepId}, outletId=${inv.outletId}');
-    }
   }
 
   Future<void> _selectDate(BuildContext context, bool isFrom) async {
@@ -188,12 +176,12 @@ class _AdminIncomingInvoicesScreenState extends State<AdminIncomingInvoicesScree
         actions: [
           IconButton(
             icon: _isExporting 
-              ? SizedBox(
+              ? const SizedBox(
                   width: 16,
                   height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : Icon(Icons.share),
+              : const Icon(Icons.share),
             tooltip: 'Поделиться Excel',
             onPressed: _isExporting ? null : _exportInvoicesToExcel,
           ),
@@ -354,7 +342,7 @@ class _AdminIncomingInvoicesScreenState extends State<AdminIncomingInvoicesScree
                                       child: Row(
                                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                         children: [
-                                          Text(
+                                          const Text(
                                             'Общая сумма:',
                                             style: TextStyle(
                                               fontSize: 16,
@@ -364,7 +352,7 @@ class _AdminIncomingInvoicesScreenState extends State<AdminIncomingInvoicesScree
                                           ),
                                           Text(
                                             '${totalSum.toStringAsFixed(2)} ₸',
-                                            style: TextStyle(
+                                            style: const TextStyle(
                                               fontSize: 18,
                                               fontWeight: FontWeight.bold,
                                               color: Colors.deepPurple,

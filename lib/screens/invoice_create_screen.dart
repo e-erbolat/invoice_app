@@ -328,7 +328,12 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 132),
+        padding: EdgeInsets.fromLTRB(
+          16,
+          16,
+          16,
+          MediaQuery.of(context).viewInsets.bottom + 32,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -708,7 +713,7 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
       ),
       bottomNavigationBar: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 48),
           child: SizedBox(
             width: double.infinity,
             height: 50,
