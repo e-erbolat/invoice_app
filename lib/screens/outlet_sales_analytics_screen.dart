@@ -151,7 +151,7 @@ class _OutletSalesAnalyticsScreenState extends State<OutletSalesAnalyticsScreen>
                     height: 20,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Icon(Icons.file_download),
+                : const Icon(Icons.table_chart),
             onPressed: _isExporting ? null : _exportToExcel,
             tooltip: 'Экспорт в Excel',
           ),
