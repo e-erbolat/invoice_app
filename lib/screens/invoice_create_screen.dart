@@ -34,7 +34,7 @@ class _InvoiceCreateScreenState extends State<InvoiceCreateScreen> {
   String _productSearch = '';
   Outlet? _selectedOutlet;
   SalesRep? _selectedSalesRep;
-  DateTime _selectedDate = DateTime.now();
+  DateTime _selectedDate = DateTime.now().add(Duration(days: 1));
   int _quantity = 1;
   double _price = 0.0;
   bool _isBonus = false;

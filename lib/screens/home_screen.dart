@@ -135,7 +135,7 @@ class _HomeScreenState extends State<HomeScreen> {
         {'emoji': '🍦', 'label': 'Входящие накладные', 'route': '/admin_incoming_invoices', 'count': _countReview},
         {'emoji': '🔨', 'label': 'На сборке', 'route': '/admin_packing_invoices', 'count': _countPacking},
         {'emoji': '🚚', 'label': 'Передан на доставку', 'route': '/admin_delivery_invoices', 'count': _countDelivery},
-        {'emoji': '✅', 'label': 'Доставлен', 'route': '/admin_delivered_invoices', 'count': _countDelivered},
+        {'emoji': '✅', 'label': 'Получение оплат', 'route': '/admin_delivered_invoices', 'count': _countDelivered},
         {'emoji': '✔️', 'label': 'Проверка оплат', 'route': '/admin_payment_check_invoices', 'count': _countPayment},
         {'emoji': '📦', 'label': 'Архив накладных', 'route': '/invoice_list'},
         if (_user?.role == 'admin' || _user?.role == 'superadmin')
