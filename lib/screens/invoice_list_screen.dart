@@ -72,9 +72,9 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
     List<Invoice> invoices;
     final salesReps = await _firebaseService.getSalesReps();
     if (user != null && user.role == 'sales') {
-      invoices = await _invoiceService.getInvoicesBySalesRep(user.uid);
+      invoices = await _invoiceService.getInvoicesByStatusAndSalesRep('6', user.uid);
     } else {
-      invoices = await _invoiceService.getAllInvoices();
+      invoices = await _invoiceService.getInvoicesByStatus(6);
     }
 
     // ЛОГИРОВАНИЕ
