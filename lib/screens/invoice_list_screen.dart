@@ -16,6 +16,7 @@ import 'package:file_saver/file_saver.dart' as fs;
 import 'package:mime/mime.dart';
 // import 'dart:html' as html; // УДАЛЕНО
 import '../screens/invoice_create_screen.dart'; // Added import for InvoiceCreateScreen
+import '../screens/invoice_screen.dart'; // Added import for InvoiceScreen
 
 class InvoiceListScreen extends StatefulWidget {
   const InvoiceListScreen({super.key});
@@ -731,7 +732,14 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
                                   // Кнопка деталей
                                   IconButton(
                                     icon: const Icon(Icons.info_outline),
-                                    onPressed: () => _showInvoiceDetails(invoice),
+                                    onPressed: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) => InvoiceScreen(invoiceId: invoice.id),
+                                        ),
+                                      );
+                                    },
                                     tooltip: 'Детали накладной',
                                   ),
                                   // Чекбокс для выбора
@@ -741,7 +749,14 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
                                   ),
                                 ],
                               ),
-                              onTap: () => _showInvoiceDetails(invoice),
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => InvoiceScreen(invoiceId: invoice.id),
+                                  ),
+                                );
+                              },
                             ),
                           );
                         },

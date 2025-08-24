@@ -3,6 +3,7 @@ import '../models/invoice.dart';
 import '../services/invoice_service.dart';
 import '../services/auth_service.dart';
 import '../models/app_user.dart';
+import 'invoice_screen.dart';
 import '../services/cash_register_service.dart';
 import '../models/cash_register.dart';
 
@@ -139,38 +140,56 @@ class _AdminPaymentCheckInvoicesScreenState extends State<AdminPaymentCheckInvoi
                             ),
                           ],
                         ),
-                        trailing: Column(
+                        trailing: Row(
                           mainAxisSize: MainAxisSize.min,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
-                            Text('${invoice.totalAmount.toStringAsFixed(2)} ₸', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
-                            if (_currentUser?.role == 'superadmin')
-                              Padding(
-                                padding: const EdgeInsets.only(top: 8.0),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    ElevatedButton(
-                                      onPressed: () => _confirmInvoice(invoice),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.green,
-                                        foregroundColor: Colors.white,
-                                      ),
-                                      child: const Text('Подтвердить'),
+                            IconButton(
+                              icon: Icon(Icons.info_outline, color: Colors.blue),
+                              tooltip: 'Детали накладной',
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => InvoiceScreen(invoiceId: invoice.id),
+                                  ),
+                                );
+                              },
+                            ),
+                            SizedBox(width: 8),
+                            Column(
+                              mainAxisSize: MainAxisSize.min,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text('${invoice.totalAmount.toStringAsFixed(2)} ₸', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
+                                if (_currentUser?.role == 'superadmin')
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 8.0),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        ElevatedButton(
+                                          onPressed: () => _confirmInvoice(invoice),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.green,
+                                            foregroundColor: Colors.white,
+                                          ),
+                                          child: const Text('Подтвердить'),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        ElevatedButton(
+                                          onPressed: () => _rejectInvoice(invoice),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.red,
+                                            foregroundColor: Colors.white,
+                                          ),
+                                          child: const Text('Отклонить'),
+                                        ),
+                                      ],
                                     ),
-                                    const SizedBox(width: 8),
-                                    ElevatedButton(
-                                      onPressed: () => _rejectInvoice(invoice),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.red,
-                                        foregroundColor: Colors.white,
-                                      ),
-                                      child: const Text('Отклонить'),
-                                    ),
-                                  ],
-                                ),
-                              ),
+                                  ),
+                              ],
+                            ),
                           ],
                         ),
                       ),

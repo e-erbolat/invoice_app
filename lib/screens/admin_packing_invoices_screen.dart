@@ -775,6 +775,21 @@ class _AdminPackingInvoicesScreenState extends State<AdminPackingInvoicesScreen>
                               trailing: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
+                                  if (!_selectionMode) ...[
+                                    IconButton(
+                                      icon: Icon(Icons.info_outline, color: Colors.blue),
+                                      tooltip: 'Детали накладной',
+                                      onPressed: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) => InvoiceScreen(invoiceId: invoice.id),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                    SizedBox(width: 8),
+                                  ],
                                   Text(
                                     '${invoice.totalAmount.toStringAsFixed(2)} ₸',
                                     style: const TextStyle(
@@ -793,7 +808,12 @@ class _AdminPackingInvoicesScreenState extends State<AdminPackingInvoicesScreen>
                               onTap: _selectionMode
                                   ? () => _toggleInvoiceSelection(invoice.id)
                                   : () {
-                                      // Открыть детали накладной
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) => InvoiceScreen(invoiceId: invoice.id),
+                                        ),
+                                      );
                                     },
                               onLongPress: () {
                                 if (!_selectionMode) {

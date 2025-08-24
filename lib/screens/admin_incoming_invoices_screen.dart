@@ -389,10 +389,19 @@ class _AdminIncomingInvoicesScreenState extends State<AdminIncomingInvoicesScree
     }
     final customNumber = '$dateNum-$suffix';
     final bgColor = index % 2 == 0 ? Colors.white : Colors.grey.shade100;
-    return Container(
-      color: bgColor,
-      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 16),
-      child: Column(
+    return InkWell(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => InvoiceScreen(invoiceId: invoice.id),
+          ),
+        );
+      },
+      child: Container(
+        color: bgColor,
+        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 16),
+        child: Column(
         children: [
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
@@ -441,18 +450,32 @@ class _AdminIncomingInvoicesScreenState extends State<AdminIncomingInvoicesScree
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                                                 IconButton(
-                           icon: Icon(Icons.edit, color: Colors.deepPurple),
-                          tooltip: 'Редактировать',
+                        // Кнопка деталей
+                        IconButton(
+                          icon: Icon(Icons.receipt_long, color: Colors.blue),
+                          tooltip: 'Детали накладной',
                           onPressed: () {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (context) => InvoiceCreateScreen(invoiceToEdit: invoice),
+                                builder: (context) => InvoiceScreen(invoiceId: invoice.id),
                               ),
-                            ).then((_) => _loadData());
+                            );
                           },
                         ),
+                        if (invoice.status == InvoiceStatus.review) ...[
+                          IconButton(
+                            icon: Icon(Icons.edit, color: Colors.deepPurple),
+                            tooltip: 'Редактировать',
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => InvoiceCreateScreen(invoiceToEdit: invoice),
+                                ),
+                              ).then((_) => _loadData());
+                            },
+                          ),
                         if (!widget.forSales)
                                                      IconButton(
                              icon: Icon(Icons.check_circle, color: Colors.green),
@@ -521,6 +544,7 @@ class _AdminIncomingInvoicesScreenState extends State<AdminIncomingInvoicesScree
                               Share.share(buffer.toString());
                             },
                           ),
+                        ],
                       ],
                     ),
                   ],
@@ -626,6 +650,7 @@ class _AdminIncomingInvoicesScreenState extends State<AdminIncomingInvoicesScree
             ),
           ],
         ],
+      ),
       ),
     );
   }
