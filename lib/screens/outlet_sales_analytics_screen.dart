@@ -99,35 +99,20 @@ class _OutletSalesAnalyticsScreenState extends State<OutletSalesAnalyticsScreen>
     }
   }
 
-  /// Выбор даты начала периода
-  Future<void> _selectStartDate() async {
-    final DateTime? picked = await showDatePicker(
+  /// Выбор диапазона дат
+  Future<void> _selectDateRange() async {
+    final result = await showDialog<Map<String, DateTime>>(
       context: context,
-      initialDate: _startDate,
-      firstDate: DateTime(2020),
-      lastDate: _endDate,
-      locale: const Locale('ru', 'RU'),
+      builder: (context) => DateRangePickerDialog(
+        startDate: _startDate,
+        endDate: _endDate,
+      ),
     );
-    if (picked != null && picked != _startDate) {
-      setState(() {
-        _startDate = picked;
-      });
-      _loadData();
-    }
-  }
 
-  /// Выбор даты окончания периода
-  Future<void> _selectEndDate() async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: _endDate,
-      firstDate: _startDate,
-      lastDate: DateTime.now(),
-      locale: const Locale('ru', 'RU'),
-    );
-    if (picked != null && picked != _endDate) {
+    if (result != null) {
       setState(() {
-        _endDate = picked;
+        _startDate = result['start']!;
+        _endDate = result['end']!;
       });
       _loadData();
     }
@@ -197,7 +182,7 @@ class _OutletSalesAnalyticsScreenState extends State<OutletSalesAnalyticsScreen>
                           ),
                           const SizedBox(height: 8),
                           InkWell(
-                            onTap: _selectStartDate,
+                            onTap: _selectDateRange,
                             child: Container(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 12,
@@ -211,7 +196,7 @@ class _OutletSalesAnalyticsScreenState extends State<OutletSalesAnalyticsScreen>
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
                                   Text(
-                                    DateFormat('dd.MM.yyyy').format(_startDate),
+                                    '${DateFormat('dd.MM.yyyy').format(_startDate)} - ${DateFormat('dd.MM.yyyy').format(_endDate)}',
                                   ),
                                   const Icon(Icons.calendar_today, size: 16),
                                 ],
@@ -222,45 +207,6 @@ class _OutletSalesAnalyticsScreenState extends State<OutletSalesAnalyticsScreen>
                       ),
                     ),
                     const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Период по:',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(height: 8),
-                          InkWell(
-                            onTap: _selectEndDate,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                border: Border.all(color: Colors.grey),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    DateFormat('dd.MM.yyyy').format(_endDate),
-                                  ),
-                                  const Icon(Icons.calendar_today, size: 16),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
                     Expanded(
                       child: ElevatedButton.icon(
                         onPressed: _resetFilters,
@@ -497,6 +443,395 @@ class _OutletSalesAnalyticsScreenState extends State<OutletSalesAnalyticsScreen>
         ],
       ),
     );
+  }
+}
+
+/// Кастомный диалог для выбора диапазона дат
+class DateRangePickerDialog extends StatefulWidget {
+  final DateTime startDate;
+  final DateTime endDate;
+
+  const DateRangePickerDialog({
+    Key? key,
+    required this.startDate,
+    required this.endDate,
+  }) : super(key: key);
+
+  @override
+  State<DateRangePickerDialog> createState() => _DateRangePickerDialogState();
+}
+
+class _DateRangePickerDialogState extends State<DateRangePickerDialog> {
+  late DateTime _startDate;
+  late DateTime _endDate;
+  late DateTime _currentMonth;
+  bool _isSelectingStart = true; // true - выбираем начало, false - выбираем конец
+
+  @override
+  void initState() {
+    super.initState();
+    _startDate = widget.startDate;
+    _endDate = widget.endDate;
+    _currentMonth = DateTime(widget.startDate.year, widget.startDate.month);
+    _isSelectingStart = true;
+  }
+
+  void _previousMonth() {
+    setState(() {
+      _currentMonth = DateTime(_currentMonth.year, _currentMonth.month - 1);
+    });
+  }
+
+  void _nextMonth() {
+    setState(() {
+      _currentMonth = DateTime(_currentMonth.year, _currentMonth.month + 1);
+    });
+  }
+
+  void _selectDate(DateTime date) {
+    setState(() {
+      if (_isSelectingStart) {
+        // Выбираем первую дату
+        _startDate = date;
+        _endDate = date;
+        _isSelectingStart = false;
+      } else {
+        // Выбираем вторую дату
+        if (date.isBefore(_startDate)) {
+          // Если вторая дата раньше первой, меняем местами
+          _endDate = _startDate;
+          _startDate = date;
+        } else {
+          _endDate = date;
+        }
+        _isSelectingStart = true; // Следующий клик сбросит выбор
+      }
+    });
+  }
+
+  void _resetSelection() {
+    setState(() {
+      _startDate = widget.startDate;
+      _endDate = widget.endDate;
+      _isSelectingStart = true;
+    });
+  }
+
+  bool _isInRange(DateTime date) {
+    return date.isAfter(_startDate.subtract(const Duration(days: 1))) &&
+           date.isBefore(_endDate.add(const Duration(days: 1)));
+  }
+
+  bool _isStartDate(DateTime date) {
+    return date.year == _startDate.year &&
+           date.month == _startDate.month &&
+           date.day == _startDate.day;
+  }
+
+  bool _isEndDate(DateTime date) {
+    return date.year == _endDate.year &&
+           date.month == _endDate.month &&
+           date.day == _endDate.day;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      child: Container(
+        width: 400,
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Заголовок
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Выберите период',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.close),
+                ),
+              ],
+            ),
+            
+            const SizedBox(height: 16),
+            
+            // Навигация по месяцам
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                IconButton(
+                  onPressed: _previousMonth,
+                  icon: const Icon(Icons.chevron_left),
+                ),
+                Text(
+                  '${_getMonthName(_currentMonth.month)} ${_currentMonth.year}',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                IconButton(
+                  onPressed: _nextMonth,
+                  icon: const Icon(Icons.chevron_right),
+                ),
+              ],
+            ),
+            
+            const SizedBox(height: 16),
+            
+            // Инструкция
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: _isSelectingStart ? Colors.blue.shade50 : Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: _isSelectingStart ? Colors.blue.shade200 : Colors.orange.shade200,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    _isSelectingStart ? Icons.play_arrow : Icons.stop,
+                    color: _isSelectingStart ? Colors.blue : Colors.orange,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _isSelectingStart 
+                          ? 'Выберите дату начала периода'
+                          : 'Выберите дату окончания периода',
+                      style: TextStyle(
+                        color: _isSelectingStart ? Colors.blue.shade700 : Colors.orange.shade700,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            
+            const SizedBox(height: 16),
+            
+            // Календарь
+            _buildCalendar(_currentMonth),
+            
+            const SizedBox(height: 16),
+            
+            // Выбранный диапазон
+            if (_startDate != _endDate) ...[
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.green.shade200),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Выбранный период:',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${_formatDate(_startDate)} - ${_formatDate(_endDate)}',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    Text(
+                      '${_endDate.difference(_startDate).inDays + 1} дней',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.green.shade700,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+            
+            // Кнопки действий
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                TextButton(
+                  onPressed: _resetSelection,
+                  child: const Text('Сбросить'),
+                ),
+                Row(
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Отмена'),
+                    ),
+                    const SizedBox(width: 16),
+                    ElevatedButton(
+                      onPressed: () {
+                        Navigator.of(context).pop({
+                          'start': _startDate,
+                          'end': _endDate,
+                        });
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      ),
+                      child: const Text('Применить'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCalendar(DateTime month) {
+    final firstDay = DateTime(month.year, month.month, 1);
+    final lastDay = DateTime(month.year, month.month + 1, 0);
+    final firstWeekday = firstDay.weekday;
+    final daysInMonth = lastDay.day;
+    
+    final weeks = <List<DateTime>>[];
+    List<DateTime> currentWeek = [];
+    
+    // Добавляем пустые дни в начале месяца
+    for (int i = 1; i < firstWeekday; i++) {
+      currentWeek.add(DateTime(month.year, month.month - 1, 0));
+    }
+    
+    // Добавляем дни месяца
+    for (int day = 1; day <= daysInMonth; day++) {
+      currentWeek.add(DateTime(month.year, month.month, day));
+      
+      if (currentWeek.length == 7) {
+        weeks.add(currentWeek);
+        currentWeek = [];
+      }
+    }
+    
+    // Добавляем пустые дни в конце месяца
+    while (currentWeek.length < 7) {
+      currentWeek.add(DateTime(month.year, month.month + 1, currentWeek.length + 1));
+    }
+    if (currentWeek.isNotEmpty) {
+      weeks.add(currentWeek);
+    }
+    
+    return Column(
+      children: [
+        // Дни недели
+        Row(
+          children: ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((day) => 
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  day,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                    color: Colors.grey,
+                  ),
+                ),
+              ),
+            )
+          ).toList(),
+        ),
+        
+        // Календарная сетка
+        ...weeks.map((week) => Row(
+          children: week.map((date) {
+            final isCurrentMonth = date.month == month.month;
+            final isInRange = _isInRange(date);
+            final isStart = _isStartDate(date);
+            final isEnd = _isEndDate(date);
+            
+            return Expanded(
+              child: Container(
+                margin: const EdgeInsets.all(1),
+                child: InkWell(
+                  onTap: isCurrentMonth ? () => _selectDate(date) : null,
+                  child: Container(
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: _getDateColor(date, isCurrentMonth, isInRange, isStart, isEnd),
+                      borderRadius: BorderRadius.circular(4),
+                      border: isStart || isEnd
+                          ? Border.all(color: Colors.blue, width: 2)
+                          : null,
+                    ),
+                    child: Center(
+                      child: Text(
+                        '${date.day}',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: isStart || isEnd ? FontWeight.bold : FontWeight.normal,
+                          color: _getDateTextColor(date, isCurrentMonth, isInRange, isStart, isEnd),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        )).toList(),
+      ],
+    );
+  }
+
+  Color _getDateColor(DateTime date, bool isCurrentMonth, bool isInRange, bool isStart, bool isEnd) {
+    if (!isCurrentMonth) return Colors.transparent;
+    if (isStart || isEnd) return Colors.blue;
+    if (isInRange) return Colors.blue.shade100;
+    return Colors.transparent;
+  }
+
+  Color _getDateTextColor(DateTime date, bool isCurrentMonth, bool isInRange, bool isStart, bool isEnd) {
+    if (!isCurrentMonth) return Colors.grey.shade400;
+    if (isStart || isEnd) return Colors.white;
+    if (isInRange) return Colors.blue.shade800;
+    return Colors.black87;
+  }
+
+  String _getMonthName(int month) {
+    const months = [
+      'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
+      'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'
+    ];
+    return months[month - 1];
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}';
   }
 }
 
