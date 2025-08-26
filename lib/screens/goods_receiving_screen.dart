@@ -1,25 +1,25 @@
 import 'package:flutter/material.dart';
-import '../models/procurement.dart';
-import '../models/procurement_item.dart';
+import '../models/purchase.dart';
+import '../models/purchase_item.dart';
 import '../models/shortage.dart';
-import '../services/procurement_service.dart';
+import '../services/purchase_service.dart';
 import '../services/shortage_service.dart';
 import 'dart:async';
 
 class GoodsReceivingScreen extends StatefulWidget {
-  final Procurement procurement;
+  final Purchase purchase;
   
   const GoodsReceivingScreen({
-    Key? key,
-    required this.procurement,
-  }) : super(key: key);
+    super.key,
+    required this.purchase,
+  });
 
   @override
   State<GoodsReceivingScreen> createState() => _GoodsReceivingScreenState();
 }
 
 class _GoodsReceivingScreenState extends State<GoodsReceivingScreen> {
-  final ProcurementService _procurementService = ProcurementService();
+  final PurchaseService _purchaseService = PurchaseService();
   final ShortageService _shortageService = ShortageService();
   
   final Map<String, TextEditingController> _receivedQtyControllers = {};
@@ -51,7 +51,7 @@ class _GoodsReceivingScreenState extends State<GoodsReceivingScreen> {
   }
 
   Future<void> _loadShortages() async {
-    final shortages = await _shortageService.getShortagesByPurchaseId(widget.procurement.id);
+    final shortages = await _shortageService.getShortagesByPurchaseId(widget.purchase.id);
     if (mounted) {
       setState(() {
         _shortages = shortages;
@@ -60,12 +60,12 @@ class _GoodsReceivingScreenState extends State<GoodsReceivingScreen> {
   }
 
   void _initializeControllers() {
-    for (final item in widget.procurement.items) {
+    for (final item in widget.purchase.items) {
       _receivedQtyControllers[item.productId] = TextEditingController(
-        text: (item.receivedQty ?? 0).toString(),
+        text: (item.receivedQty?.toString() ?? '0'),
       );
       _noteControllers[item.productId] = TextEditingController(
-        text: item.note ?? '',
+        text: item.notes ?? '',
       );
       
       // Слушаем изменения для отслеживания модификаций
@@ -90,12 +90,12 @@ class _GoodsReceivingScreenState extends State<GoodsReceivingScreen> {
     
     try {
       final updatedItems = _getUpdatedItems();
-      final updatedProcurement = widget.procurement.copyWith(
+      final updatedPurchase = widget.purchase.copyWith(
         items: updatedItems,
-        totalAmount: updatedItems.fold<double>(0.0, (sum, item) => sum + ((item.quantity ?? 0) * (item.purchasePrice ?? 0.0))),
+        totalAmount: updatedItems.fold<double>(0.0, (total, item) => total + item.totalPrice),
       );
       
-      await _procurementService.updateProcurement(updatedProcurement);
+      await _purchaseService.updatePurchase(updatedPurchase);
       
       if (mounted) {
         setState(() => _hasChanges = false);
@@ -118,8 +118,8 @@ class _GoodsReceivingScreenState extends State<GoodsReceivingScreen> {
     }
   }
 
-  List<ProcurementItem> _getUpdatedItems() {
-    return widget.procurement.items.map((item) {
+  List<PurchaseItem> _getUpdatedItems() {
+    return widget.purchase.items.map((item) {
       final receivedQty = int.tryParse(
         _receivedQtyControllers[item.productId]?.text ?? '0'
       ) ?? 0;
@@ -128,8 +128,8 @@ class _GoodsReceivingScreenState extends State<GoodsReceivingScreen> {
       
       return item.copyWith(
         receivedQty: receivedQty,
-        missingQty: receivedQty < item.quantity ? item.quantity - receivedQty : 0,
-        note: note.isNotEmpty ? note : null,
+        missingQty: receivedQty < item.orderedQty ? item.orderedQty - receivedQty : 0,
+        notes: note.isNotEmpty ? note : null,
       );
     }).toList();
   }
@@ -139,8 +139,8 @@ class _GoodsReceivingScreenState extends State<GoodsReceivingScreen> {
     
     try {
       final updatedItems = _getUpdatedItems();
-      final shortages = <ProcurementItem>[];
-      final fullyReceivedItems = <ProcurementItem>[];
+      final shortages = <PurchaseItem>[];
+      final fullyReceivedItems = <PurchaseItem>[];
       
       // Анализируем каждый товар
       for (final item in updatedItems) {
@@ -156,17 +156,17 @@ class _GoodsReceivingScreenState extends State<GoodsReceivingScreen> {
       // Создаем недостачи, если есть
       if (shortages.isNotEmpty) {
         await _shortageService.createShortagesFromItems(
-          widget.procurement.id,
+          widget.purchase.id,
           shortages,
         );
         
-        // Обновляем закуп - переводим в статус ожидания недостачи
-        final updatedProcurement = widget.procurement.copyWith(
+        // Обновляем закуп - переводим в статус приемки
+        final updatedPurchase = widget.purchase.copyWith(
           items: updatedItems,
-          totalAmount: updatedItems.fold<double>(0.0, (sum, item) => sum + ((item.quantity ?? 0) * (item.purchasePrice ?? 0.0))),
-        ).markAsWaitingShortages();
+          totalAmount: updatedItems.fold<double>(0.0, (total, item) => total + item.totalPrice),
+        );
         
-        await _procurementService.updateProcurement(updatedProcurement);
+        await _purchaseService.updatePurchase(updatedPurchase);
         
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -178,12 +178,12 @@ class _GoodsReceivingScreenState extends State<GoodsReceivingScreen> {
         }
       } else {
         // Все товары приняты полностью
-        final updatedProcurement = widget.procurement.copyWith(
+        final updatedPurchase = widget.purchase.copyWith(
           items: updatedItems,
-          totalAmount: updatedItems.fold<double>(0.0, (sum, item) => sum + ((item.quantity ?? 0) * (item.purchasePrice ?? 0.0))),
-        ).markAsCompleted();
+          totalAmount: updatedItems.fold<double>(0.0, (total, item) => total + item.totalPrice),
+        );
         
-        await _procurementService.updateProcurement(updatedProcurement);
+        await _purchaseService.updatePurchase(updatedPurchase);
         
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -221,7 +221,7 @@ class _GoodsReceivingScreenState extends State<GoodsReceivingScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Приемка товара: ${widget.procurement.sourceName}'),
+        title: Text('Приемка товара: ${widget.purchase.supplierName}'),
         backgroundColor: Colors.white,
         elevation: 2,
         foregroundColor: Colors.black,
@@ -251,7 +251,7 @@ class _GoodsReceivingScreenState extends State<GoodsReceivingScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Закуп: ${widget.procurement.sourceName}',
+                  'Закуп: ${widget.purchase.supplierName}',
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -259,10 +259,10 @@ class _GoodsReceivingScreenState extends State<GoodsReceivingScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Дата: ${widget.procurement.date.toDate().day.toString().padLeft(2,'0')}.${widget.procurement.date.toDate().month.toString().padLeft(2,'0')}.${widget.procurement.date.toDate().year}',
+                  'Дата: ${widget.purchase.dateCreated.toDate().day.toString().padLeft(2,'0')}.${widget.purchase.dateCreated.toDate().month.toString().padLeft(2,'0')}.${widget.purchase.dateCreated.toDate().year}',
                 ),
                 Text(
-                  'Заказанная сумма: ${widget.procurement.totalAmount.toStringAsFixed(2)} ₸',
+                  'Заказанная сумма: ${widget.purchase.totalAmount.toStringAsFixed(2)} ₸',
                 ),
                 if (_shortages.isNotEmpty)
                   Text(
@@ -277,13 +277,13 @@ class _GoodsReceivingScreenState extends State<GoodsReceivingScreen> {
           Expanded(
             child: ListView.builder(
               padding: const EdgeInsets.all(16),
-              itemCount: widget.procurement.items.length,
+                              itemCount: widget.purchase.items.length,
               itemBuilder: (context, index) {
-                final item = widget.procurement.items[index];
+                                  final item = widget.purchase.items[index];
                 final receivedController = _receivedQtyControllers[item.productId]!;
                 final noteController = _noteControllers[item.productId]!;
                 final receivedQty = int.tryParse(receivedController.text) ?? 0;
-                final hasShortage = receivedQty < item.quantity;
+                final hasShortage = receivedQty < item.orderedQty;
                 
                 return Card(
                   margin: const EdgeInsets.only(bottom: 12),
@@ -333,7 +333,7 @@ class _GoodsReceivingScreenState extends State<GoodsReceivingScreen> {
                                     style: TextStyle(fontSize: 12, color: Colors.grey),
                                   ),
                                   Text(
-                                    '${item.quantity} шт.',
+                                    '${item.orderedQty} шт.',
                                     style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                                   ),
                                 ],
@@ -354,7 +354,7 @@ class _GoodsReceivingScreenState extends State<GoodsReceivingScreen> {
                                     decoration: InputDecoration(
                                       border: const OutlineInputBorder(),
                                       suffixText: 'шт.',
-                                      errorText: hasShortage ? 'Недостача: ${item.quantity - receivedQty} шт.' : null,
+                                      errorText: hasShortage ? 'Недостача: ${item.orderedQty - receivedQty} шт.' : null,
                                     ),
                                   ),
                                 ],
@@ -383,7 +383,7 @@ class _GoodsReceivingScreenState extends State<GoodsReceivingScreen> {
                                 const SizedBox(width: 8),
                                 Text(
                                   hasShortage 
-                                    ? 'Недостача: ${item.quantity - receivedQty} шт.'
+                                    ? 'Недостача: ${item.orderedQty - receivedQty} шт.'
                                     : 'Полностью принят',
                                   style: TextStyle(
                                     color: hasShortage ? Colors.orange.shade800 : Colors.green.shade800,

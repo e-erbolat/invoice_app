@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/shortage.dart';
-import '../models/procurement_item.dart';
+import '../models/purchase_item.dart';
 
 class ShortageService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -45,21 +45,27 @@ class ShortageService {
   }
 
   // Отметить недостачу как полученную
-  Future<void> markShortageAsReceived(String shortageId, {String? note}) async {
+  Future<void> markShortageAsReceived(String shortageId, {String? userId, String? userName}) async {
     final doc = await _firestore.collection('shortages').doc(shortageId).get();
     if (doc.exists) {
       final shortage = Shortage.fromMap(doc.data()!);
-      final updatedShortage = shortage.markAsReceived(note: note);
+      final updatedShortage = shortage.markAsReceived(
+        receivedByUserId: userId ?? '',
+        receivedByUserName: userName ?? '',
+      );
       await updateShortage(updatedShortage);
     }
   }
 
   // Отметить недостачу как не полученную
-  Future<void> markShortageAsNotReceived(String shortageId, {String? note}) async {
+  Future<void> markShortageAsNotReceived(String shortageId, {String? userId, String? userName}) async {
     final doc = await _firestore.collection('shortages').doc(shortageId).get();
     if (doc.exists) {
       final shortage = Shortage.fromMap(doc.data()!);
-      final updatedShortage = shortage.markAsNotReceived(note: note);
+      final updatedShortage = shortage.markAsNotReceived(
+        closedByUserId: userId ?? '',
+        closedByUserName: userName ?? '',
+      );
       await updateShortage(updatedShortage);
     }
   }
@@ -72,21 +78,26 @@ class ShortageService {
   // Создание недостач из позиций закупа
   Future<List<Shortage>> createShortagesFromItems(
     String purchaseId,
-    List<ProcurementItem> items,
+    List<PurchaseItem> items,
   ) async {
     final shortages = <Shortage>[];
     
+    // Сначала удаляем все существующие недостачи для этого закупа
+    await removeAllShortagesForPurchase(purchaseId);
+    
+    // Создаем новые недостачи на основе актуальных данных
     for (final item in items) {
       if (item.hasShortage) {
+        final missingQty = item.missingQty ?? 0;
+        
+        // Создаем новую недостачу
         final shortage = Shortage.create(
+          purchaseItemId: item.id,
           purchaseId: purchaseId,
-          itemId: item.productId,
           productId: item.productId,
           productName: item.productName,
-          orderedQty: item.quantity,
-          missingQty: item.calculatedMissingQty,
-          purchasePrice: item.purchasePrice,
-          note: item.note,
+          missingQty: missingQty,
+          notes: item.notes,
         );
         shortages.add(shortage);
         await createShortage(shortage);
@@ -106,7 +117,7 @@ class ShortageService {
     
     final totalMissingQty = allShortages
         .where((s) => s.isWaiting)
-        .fold(0, (sum, s) => sum + s.missingQty);
+        .fold(0, (total, s) => total + s.missingQty);
     
     return {
       'waiting': waiting,
@@ -114,5 +125,35 @@ class ShortageService {
       'notReceived': notReceived,
       'totalMissingQty': totalMissingQty,
     };
+  }
+
+  // Удаление дублирующихся недостач для закупа
+  Future<void> removeDuplicateShortages(String purchaseId) async {
+    final shortages = await getShortagesByPurchaseId(purchaseId);
+    
+    // Группируем недостачи по purchaseItemId
+    final groupedShortages = <String, List<Shortage>>{};
+    for (final shortage in shortages) {
+      groupedShortages.putIfAbsent(shortage.purchaseItemId, () => []).add(shortage);
+    }
+    
+    // Удаляем дубликаты, оставляя только первую недостачу для каждой позиции
+    for (final entry in groupedShortages.entries) {
+      final itemShortages = entry.value;
+      if (itemShortages.length > 1) {
+        // Оставляем первую недостачу, удаляем остальные
+        for (int i = 1; i < itemShortages.length; i++) {
+          await deleteShortage(itemShortages[i].id);
+        }
+      }
+    }
+  }
+
+  // Удаление всех недостач для закупа
+  Future<void> removeAllShortagesForPurchase(String purchaseId) async {
+    final shortages = await getShortagesByPurchaseId(purchaseId);
+    for (final shortage in shortages) {
+      await deleteShortage(shortage.id);
+    }
   }
 }

@@ -1,26 +1,33 @@
 import 'package:flutter/material.dart';
-import '../models/procurement.dart';
-import '../services/procurement_service.dart';
+import '../models/purchase.dart';
+import '../models/shortage.dart';
+import '../services/purchase_service.dart';
+import '../services/shortage_service.dart';
 import '../services/auth_service.dart';
 import '../models/app_user.dart';
+import 'goods_receiving_screen.dart';
 
 class PurchaseDetailScreen extends StatefulWidget {
-  final Procurement procurement;
-  const PurchaseDetailScreen({Key? key, required this.procurement}) : super(key: key);
+  final Purchase purchase;
+  const PurchaseDetailScreen({super.key, required this.purchase});
 
   @override
   State<PurchaseDetailScreen> createState() => _PurchaseDetailScreenState();
 }
 
 class _PurchaseDetailScreenState extends State<PurchaseDetailScreen> {
-  final ProcurementService _procurementService = ProcurementService();
+  final PurchaseService _purchaseService = PurchaseService();
+  final ShortageService _shortageService = ShortageService();
   final AuthService _authService = AuthService();
   AppUser? _currentUser;
+  List<Shortage> _shortages = [];
+  bool _loadingShortages = false;
 
   @override
   void initState() {
     super.initState();
     _loadCurrentUser();
+    _loadShortages();
   }
 
   Future<void> _loadCurrentUser() async {
@@ -32,13 +39,37 @@ class _PurchaseDetailScreenState extends State<PurchaseDetailScreen> {
     }
   }
 
+  Future<void> _loadShortages() async {
+    setState(() { _loadingShortages = true; });
+    try {
+      // Сначала очищаем дубликаты
+      await _shortageService.removeDuplicateShortages(widget.purchase.id);
+      
+      // Затем загружаем недостачи
+      final shortages = await _shortageService.getShortagesByPurchaseId(widget.purchase.id);
+      if (mounted) {
+        setState(() {
+          _shortages = shortages;
+          _loadingShortages = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() { _loadingShortages = false; });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка загрузки недостач: $e')),
+        );
+      }
+    }
+  }
+
   Future<void> _rejectProcurement() async {
     // Показываем диалог подтверждения
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Отклонить закуп'),
-        content: Text('Вы уверены, что хотите вернуть закуп "${widget.procurement.sourceName}" на предыдущий этап?'),
+        content: Text('Вы уверены, что хотите вернуть закуп "${widget.purchase.supplierName}" на предыдущий этап?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -56,27 +87,27 @@ class _PurchaseDetailScreenState extends State<PurchaseDetailScreen> {
     if (confirmed == true) {
       try {
         // Определяем предыдущий статус в зависимости от текущего
-        int previousStatus;
+        PurchaseStatus previousStatus;
         String statusMessage;
         
-        switch (widget.procurement.status) {
-          case ProcurementStatus.arrival:
-            previousStatus = ProcurementStatus.arrival.index;
-            statusMessage = 'Закуп возвращен в статус "Приход товара"';
+        switch (widget.purchase.status) {
+          case PurchaseStatus.receiving:
+            previousStatus = PurchaseStatus.created;
+            statusMessage = 'Закуп возвращен в статус "Создан"';
             break;
-          case ProcurementStatus.shortage:
-            previousStatus = ProcurementStatus.arrival.index;
-            statusMessage = 'Закуп возвращен в статус "Приход товара"';
+          case PurchaseStatus.inStock:
+            previousStatus = PurchaseStatus.receiving;
+            statusMessage = 'Закуп возвращен в статус "Приемка"';
             break;
-          case ProcurementStatus.forSale:
-            previousStatus = ProcurementStatus.arrival.index;
-            statusMessage = 'Закуп возвращен в статус "Приход товара"';
+          case PurchaseStatus.onSale:
+            previousStatus = PurchaseStatus.inStock;
+            statusMessage = 'Закуп возвращен в статус "На складе"';
             break;
           default:
-            // Для закупа в статусе "purchase" нельзя отклонить
+            // Для закупа в статусе "created" нельзя отклонить
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('Закуп в статусе "Закуп товара" нельзя отклонить'),
+                content: Text('Закуп в статусе "Создан" нельзя отклонить'),
                 backgroundColor: Colors.orange,
               ),
             );
@@ -84,8 +115,8 @@ class _PurchaseDetailScreenState extends State<PurchaseDetailScreen> {
         }
 
         // Обновляем статус закупа
-        await _procurementService.updateProcurementStatus(
-          widget.procurement.id, 
+        await _purchaseService.updatePurchaseStatus(
+          widget.purchase.id, 
           previousStatus
         );
         
@@ -114,12 +145,51 @@ class _PurchaseDetailScreenState extends State<PurchaseDetailScreen> {
     }
   }
 
+  Future<void> _markShortageAsReceived(Shortage shortage) async {
+    try {
+      await _shortageService.markShortageAsReceived(
+        shortage.id,
+        userId: _currentUser?.uid,
+        userName: _currentUser?.name ?? _currentUser?.email,
+      );
+      _loadShortages();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Недостача отмечена как полученная')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка: $e')),
+      );
+    }
+  }
+
+  Future<void> _markShortageAsNotReceived(Shortage shortage) async {
+    try {
+      await _shortageService.markShortageAsNotReceived(
+        shortage.id,
+        userId: _currentUser?.uid,
+        userName: _currentUser?.name ?? _currentUser?.email,
+      );
+      _loadShortages();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Недостача отмечена как не полученная')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final date = widget.procurement.date.toDate();
+    final date = widget.purchase.dateCreated.toDate();
     return Scaffold(
       appBar: AppBar(
         title: const Text('Детали закупа'),
+        backgroundColor: Colors.white,
+        elevation: 2,
+        foregroundColor: Colors.black,
         actions: [
           // Кнопка отклонения для суперадмина
           if (_currentUser?.role == 'superadmin')
@@ -130,34 +200,260 @@ class _PurchaseDetailScreenState extends State<PurchaseDetailScreen> {
             ),
         ],
       ),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Источник: ${widget.procurement.sourceName}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 8),
-            Text('Дата: ${date.day.toString().padLeft(2,'0')}.${date.month.toString().padLeft(2,'0')}.${date.year}'),
-            const SizedBox(height: 8),
-            Text('Итого: ${widget.procurement.totalAmount.toStringAsFixed(2)} ₸', style: const TextStyle(fontWeight: FontWeight.w600)),
+            // Основная информация о закупе
+            Card(
+              elevation: 4,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.business, color: Colors.blue[700]),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            widget.purchase.supplierName,
+                            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Icon(Icons.calendar_today, color: Colors.grey[600], size: 16),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Дата: ${date.day.toString().padLeft(2,'0')}.${date.month.toString().padLeft(2,'0')}.${date.year}',
+                          style: const TextStyle(fontSize: 16),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Icon(Icons.info_outline, color: Colors.grey[600], size: 16),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Статус: ${widget.purchase.statusDisplayName}',
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: Color(widget.purchase.statusColor),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Icon(Icons.attach_money, color: Colors.green[700], size: 16),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Итого: ${widget.purchase.totalAmount.toStringAsFixed(2)} ₸',
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green),
+                        ),
+                      ],
+                    ),
+                    if (widget.purchase.notes != null && widget.purchase.notes!.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.note, color: Colors.grey[600], size: 16),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Примечания: ${widget.purchase.notes}',
+                              style: const TextStyle(fontSize: 14, fontStyle: FontStyle.italic),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            
             const SizedBox(height: 16),
-            const Text('Позиции', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            
+            // Кнопки действий
+            if (widget.purchase.status == PurchaseStatus.created)
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () async {
+                    final result = await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => GoodsReceivingScreen(purchase: widget.purchase),
+                      ),
+                    );
+                    if (result == true) {
+                      _loadShortages();
+                    }
+                  },
+                  icon: const Icon(Icons.receipt_long),
+                  label: const Text('Приемка товаров'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+              ),
+            
+            if (widget.purchase.status == PurchaseStatus.receiving)
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () async {
+                    // TODO: Экран оприходования
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Функция оприходования в разработке')),
+                    );
+                  },
+                  icon: const Icon(Icons.inventory),
+                  label: const Text('Оприходовать'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+              ),
+            
+            const SizedBox(height: 20),
+            
+            // Позиции закупа
+            const Text(
+              'Позиции закупа',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 8),
-            Expanded(
-              child: ListView.builder(
-                itemCount: widget.procurement.items.length,
+            ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: widget.purchase.items.length,
+              itemBuilder: (context, i) {
+                final item = widget.purchase.items[i];
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  child: ListTile(
+                    title: Text(
+                      item.productName,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Заказано: ${item.orderedQty} × ${item.purchasePrice.toStringAsFixed(2)} ₸ = ${item.totalPrice.toStringAsFixed(2)} ₸'),
+                        if (item.receivedQty != null)
+                          Text('Принято: ${item.receivedQty} шт.', style: const TextStyle(color: Colors.green)),
+                        if (item.missingQty != null && item.missingQty! > 0)
+                          Text('Недостача: ${item.missingQty} шт.', style: const TextStyle(color: Colors.red)),
+                      ],
+                    ),
+                    trailing: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Color(item.statusColor),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        item.statusDisplayName,
+                        style: const TextStyle(color: Colors.white, fontSize: 12),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+            
+            const SizedBox(height: 20),
+            
+            // Недостачи
+            if (_shortages.isNotEmpty) ...[
+              Row(
+                children: [
+                  Icon(Icons.warning, color: Colors.orange[700]),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Недостачи',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: _shortages.length,
                 itemBuilder: (context, i) {
-                  final it = widget.procurement.items[i];
+                  final shortage = _shortages[i];
                   return Card(
                     margin: const EdgeInsets.only(bottom: 8),
                     child: ListTile(
-                      title: Text(it.productName),
-                      subtitle: Text('${it.quantity} × ${it.purchasePrice.toStringAsFixed(2)} = ${it.totalPrice.toStringAsFixed(2)} ₸'),
+                      title: Text(
+                        shortage.productName,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Недостача: ${shortage.missingQty} шт.'),
+                          Text('Статус: ${shortage.statusDisplayName}'),
+                          if (shortage.notes != null && shortage.notes!.isNotEmpty)
+                            Text('Примечания: ${shortage.notes}'),
+                        ],
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Color(shortage.statusColor),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              shortage.statusDisplayName,
+                              style: const TextStyle(color: Colors.white, fontSize: 12),
+                            ),
+                          ),
+                          if (shortage.status == ShortageStatus.waiting) ...[
+                            const SizedBox(width: 8),
+                            IconButton(
+                              icon: const Icon(Icons.check, color: Colors.green),
+                              onPressed: () => _markShortageAsReceived(shortage),
+                              tooltip: 'Отметить как полученное',
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.close, color: Colors.red),
+                              onPressed: () => _markShortageAsNotReceived(shortage),
+                              tooltip: 'Отметить как не полученное',
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
                   );
                 },
               ),
-            ),
+            ],
+            
+            if (_loadingShortages)
+              const Center(child: CircularProgressIndicator()),
           ],
         ),
       ),

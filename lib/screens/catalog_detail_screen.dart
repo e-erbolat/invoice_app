@@ -21,7 +21,7 @@ class CatalogDetailScreen extends StatelessWidget {
               subtitle: Text('Цена: ${item.price.toStringAsFixed(2)}'),
             ),
           );
-        },
+        }, 
       ),
     );
   }

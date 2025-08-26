@@ -1,28 +1,31 @@
 import 'package:flutter/material.dart';
 import 'purchase_create_screen.dart';
-import '../services/procurement_service.dart';
-import '../models/procurement.dart';
 import 'purchase_detail_screen.dart';
+import 'purchase_archive_screen.dart';
+import 'shortage_management_screen.dart';
+import '../services/purchase_service.dart';
+import '../models/purchase.dart';
 import '../services/auth_service.dart';
 import '../models/app_user.dart';
-import 'arrival_verification_screen.dart';
-import 'goods_receiving_screen.dart'; // Новый импорт
+import '../services/satushi_api_service.dart';
+import 'goods_receiving_screen.dart';
 
 class ProductProcurementScreen extends StatefulWidget {
-  const ProductProcurementScreen({Key? key}) : super(key: key);
+  const ProductProcurementScreen({super.key});
 
   @override
   State<ProductProcurementScreen> createState() => _ProductProcurementScreenState();
 }
 
 class _ProductProcurementScreenState extends State<ProductProcurementScreen> {
-  final ProcurementService _procurementService = ProcurementService();
+  final PurchaseService _purchaseService = PurchaseService();
   final AuthService _authService = AuthService();
+  final SatushiApiService _satushiApiService = SatushiApiService();
   bool _loading = true;
-  List<Procurement> _purchases = [];
-  List<Procurement> _arrivals = [];
-  List<Procurement> _shortages = [];
-  List<Procurement> _forSales = [];
+  List<Purchase> _purchases = [];
+  List<Purchase> _arrivals = [];
+  List<Purchase> _shortages = [];
+  List<Purchase> _forSales = [];
   String? _error;
   AppUser? _currentUser;
 
@@ -45,18 +48,15 @@ class _ProductProcurementScreenState extends State<ProductProcurementScreen> {
   Future<void> _load() async {
     setState(() { _loading = true; _error = null; });
     try {
-      final results = await Future.wait<List<Procurement>>([
-        _procurementService.getProcurementsByStatus(ProcurementStatus.purchase.index),
-        _procurementService.getProcurementsByStatus(ProcurementStatus.arrival.index),
-        _procurementService.getProcurementsByStatus(ProcurementStatus.shortage.index),
-        _procurementService.getProcurementsByStatus(ProcurementStatus.forSale.index),
-      ]);
+      // Получаем все закупы и фильтруем по статусам
+      final allPurchases = await _purchaseService.getAllPurchases();
       if (!mounted) return;
+      
       setState(() {
-        _purchases = results[0];
-        _arrivals = results[1];
-        _shortages = results[2];
-        _forSales = results[3];
+        _purchases = allPurchases.where((p) => p.status == PurchaseStatus.created).toList();
+        _arrivals = allPurchases.where((p) => p.status == PurchaseStatus.receiving).toList();
+        _shortages = allPurchases.where((p) => p.status == PurchaseStatus.inStock).toList();
+        _forSales = allPurchases.where((p) => p.status == PurchaseStatus.onSale).toList();
         _loading = false;
       });
     } catch (e) {
@@ -68,154 +68,159 @@ class _ProductProcurementScreenState extends State<ProductProcurementScreen> {
     }
   }
 
-  Future<void> _acceptToArrival(Procurement p) async {
-    await _procurementService.updateProcurementStatus(p.id, ProcurementStatus.arrival.index);
+  Future<void> _acceptToArrival(Purchase p) async {
+    await _purchaseService.updatePurchaseStatus(p.id, PurchaseStatus.receiving);
     _load();
   }
 
-  Future<void> _moveToShortage(Procurement p) async {
-    await _procurementService.updateProcurementStatus(p.id, ProcurementStatus.shortage.index);
+  Future<void> _moveToShortage(Purchase p) async {
+    await _purchaseService.updatePurchaseStatus(p.id, PurchaseStatus.inStock);
     _load();
   }
 
-  Future<void> _moveToForSale(Procurement p) async {
-    await _procurementService.updateProcurementStatus(p.id, ProcurementStatus.forSale.index);
+  Future<void> _moveToForSale(Purchase p) async {
+    await _purchaseService.updatePurchaseStatus(p.id, PurchaseStatus.onSale);
     _load();
   }
 
-  Future<void> _editProcurement(Procurement p) async {
+  /// Оприходовать товары закупа через API Satushi
+  Future<void> _stockItems(Purchase p) async {
+    if (_currentUser?.satushiToken == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Ошибка: отсутствует токен Satushi в профиле'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    try {
+      setState(() { _loading = true; });
+      
+      // Вызываем API для оприходования
+      final success = await _satushiApiService.incomeRequest(
+        p, 
+        _currentUser!.satushiToken!
+      );
+      
+      if (success) {
+        // Если оприходование успешно, переводим на следующий этап
+        await _purchaseService.updatePurchaseStatus(p.id, PurchaseStatus.inStock);
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Товары успешно оприходованы!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        
+        _load(); // Перезагружаем данные
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Ошибка оприходования: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      setState(() { _loading = false; });
+    }
+  }
+
+  Future<void> _rejectProcurement(Purchase p) async {
+    // Логика отклонения закупа
+    await _purchaseService.updatePurchaseStatus(p.id, PurchaseStatus.closedWithShortage);
+    _load();
+  }
+
+  Future<void> _editProcurement(Purchase p) async {
     // Навигация на экран редактирования
+    debugPrint('Открытие редактирования закупа: ID=${p.id}, Поставщик=${p.supplierName}');
+    debugPrint('Firestore ID: ${p.id}');
+    
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => PurchaseCreateScreen(procurementToEdit: p),
+        builder: (_) => PurchaseCreateScreen(purchaseToEdit: p),
       ),
     );
     _load(); // Перезагружаем данные после редактирования
   }
 
-  Future<void> _openArrivalVerification(Procurement p) async {
-    // Навигация на экран сверки прихода
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ArrivalVerificationScreen(procurement: p),
-      ),
-    );
-    
-    // Если сверка была завершена, перезагружаем данные
-    if (result == true) {
-      _load();
-    }
-  }
 
-  Future<void> _rejectProcurement(Procurement p) async {
-    // Показываем диалог подтверждения
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Отклонить закуп'),
-        content: Text('Вы уверены, что хотите вернуть закуп "${p.sourceName}" на предыдущий этап?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Отмена'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Отклонить', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
 
-    if (confirmed == true) {
-      try {
-        // Определяем предыдущий статус в зависимости от текущего
-        int previousStatus;
-        String statusMessage;
-        
-        switch (p.status) {
-          case ProcurementStatus.arrival:
-            previousStatus = ProcurementStatus.purchase.index;
-            statusMessage = 'Закуп возвращен в статус "Закуп товара"';
-            break;
-          case ProcurementStatus.shortage:
-            previousStatus = ProcurementStatus.arrival.index;
-            statusMessage = 'Закуп возвращен в статус "Приход товара"';
-            break;
-          case ProcurementStatus.forSale:
-            previousStatus = ProcurementStatus.arrival.index;
-            statusMessage = 'Закуп возвращен в статус "Приход товара"';
-            break;
-          default:
-            // Для закупа в статусе "purchase" нельзя отклонить
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Закуп в статусе "Закуп товара" нельзя отклонить'),
-                backgroundColor: Colors.orange,
-              ),
-            );
-            return;
-        }
 
-        // Обновляем статус закупа
-        await _procurementService.updateProcurementStatus(p.id, previousStatus);
-        
-        // Показываем уведомление об успехе
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(statusMessage),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-        
-        // Перезагружаем данные
-        _load();
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Ошибка при отклонении закупа: $e'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
-    }
-  }
 
-  Future<void> _openGoodsReceiving(Procurement p) async {
+  Future<void> _openGoodsReceiving(Purchase p) async {
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => GoodsReceivingScreen(procurement: p),
+        builder: (_) => GoodsReceivingScreen(purchase: p),
       ),
     );
     _load();
   }
 
-  Widget _buildCard(Procurement p, {List<Widget> trailingActions = const []}) {
+  Future<void> _openArrivalVerification(Purchase p) async {
+    // Навигация на экран сверки прихода
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const Scaffold(body: Center(child: Text('Экран сверки прихода'))),
+      ),
+    );
+    if (result == true) {
+      _load();
+    }
+  }
+
+  void _openPurchaseDetails(Purchase p) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PurchaseDetailScreen(purchase: p),
+      ),
+    );
+  }
+
+  void _openArchive() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const PurchaseArchiveScreen(),
+      ),
+    );
+  }
+
+  void _openShortageManagement() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const ShortageManagementScreen(),
+      ),
+    );
+  }
+
+  Widget _buildCard(Purchase p, {List<Widget> trailingActions = const []}) {
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: ListTile(
         leading: const Icon(Icons.shopping_bag, color: Colors.blue),
-        title: Text(p.sourceName, style: const TextStyle(fontWeight: FontWeight.w600)),
+        title: Text(p.supplierName, style: const TextStyle(fontWeight: FontWeight.w600)),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Дата: ${p.date.toDate().day.toString().padLeft(2,'0')}.${p.date.toDate().month.toString().padLeft(2,'0')}.${p.date.toDate().year}  •  Итого: ${p.totalAmount.toStringAsFixed(2)} ₸',
+              'Дата: ${p.dateCreated.toDate().day.toString().padLeft(2,'0')}.${p.dateCreated.toDate().month.toString().padLeft(2,'0')}.${p.dateCreated.toDate().year}  •  Итого: ${p.totalAmount.toStringAsFixed(2)} ₸',
             ),
-            if (p.status == ProcurementStatus.shortage && p.items.isNotEmpty && p.items.first.procurementId != null)
+            if (p.status == PurchaseStatus.inStock && p.items.isNotEmpty)
               Text(
-                'Из закупа: ${p.items.first.procurementId}',
+                'Статус: ${p.statusDisplayName}',
                 style: const TextStyle(
-                  color: Colors.red,
+                  color: Colors.blue,
                   fontSize: 12,
                   fontStyle: FontStyle.italic,
                 ),
@@ -228,12 +233,7 @@ class _ProductProcurementScreenState extends State<ProductProcurementScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: trailingActions,
               ),
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => PurchaseDetailScreen(procurement: p)),
-          );
-        },
+        onTap: () => _openPurchaseDetails(p),
       ),
     );
   }
@@ -246,14 +246,24 @@ class _ProductProcurementScreenState extends State<ProductProcurementScreen> {
         appBar: AppBar(
           title: const Text('Закуп товара'),
           actions: [
+            IconButton(
+              onPressed: _openShortageManagement,
+              icon: const Icon(Icons.warning),
+              tooltip: 'Управление недостачами',
+            ),
+            IconButton(
+              onPressed: _openArchive,
+              icon: const Icon(Icons.archive),
+              tooltip: 'Архив закупов',
+            ),
             IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
           ],
           bottom: const TabBar(
             tabs: [
-              Tab(text: 'Закуп товара'),
-              Tab(text: 'Приход товара'),
-              Tab(text: 'Недостача'),
+              Tab(text: 'Ожидание'),
+              Tab(text: 'Оприходывание'),
               Tab(text: 'Выставка на продажу'),
+              Tab(text: 'На продаже'),
             ],
           ),
         ),
@@ -265,8 +275,8 @@ class _ProductProcurementScreenState extends State<ProductProcurementScreen> {
             );
             _load();
           },
-          child: const Icon(Icons.add),
           tooltip: 'Создать закуп',
+          child: const Icon(Icons.add),
         ),
         body: _loading
             ? const Center(child: CircularProgressIndicator())
@@ -279,15 +289,18 @@ class _ProductProcurementScreenState extends State<ProductProcurementScreen> {
                         const SizedBox(height: 8),
                         Text('Ошибка загрузки: \n\n$_error', textAlign: TextAlign.center),
                         const SizedBox(height: 12),
-                        ElevatedButton(onPressed: _load, child: const Text('Повторить')),
+                        ElevatedButton(
+                          onPressed: _load,
+                          child: const Text('Повторить'),
+                        ),
                       ],
                     ),
                   )
                 : TabBarView(
                 children: [
-                  // Закуп товара
+                  // Закупы в ожидании
                   _purchases.isEmpty
-                      ? const Center(child: Text('Закупы отсутствуют'))
+                      ? const Center(child: Text('Закупы в ожидании отсутствуют'))
                       : ListView.separated(
                           padding: const EdgeInsets.all(16),
                           itemCount: _purchases.length,
@@ -307,31 +320,31 @@ class _ProductProcurementScreenState extends State<ProductProcurementScreen> {
                               // Кнопка отклонения для суперадмина
                               if (_currentUser?.role == 'superadmin')
                                 IconButton(
-                                  icon: const Icon(Icons.undo, color: Colors.orange),
+                                  icon: const Icon(Icons.cancel, color: Colors.red),
                                   tooltip: 'Отклонить',
                                   onPressed: () => _rejectProcurement(p),
                                 ),
                               if (_currentUser?.role == 'superadmin')
                                 const SizedBox(width: 8),
                               ElevatedButton(
-                                onPressed: () => _acceptToArrival(p),
                                 child: const Text('Принять'),
+                                onPressed: () => _acceptToArrival(p),
                               ),
                               const SizedBox(width: 8),
                               ElevatedButton(
-                                onPressed: () => _openGoodsReceiving(p),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.green,
                                   foregroundColor: Colors.white,
                                 ),
                                 child: const Text('Приемка'),
+                                onPressed: () => _openGoodsReceiving(p),
                               ),
                             ]);
                           },
                         ),
-                  // Приход товара
+                  // Закупы на оприходывании
                   _arrivals.isEmpty
-                      ? const Center(child: Text('Приходы отсутствуют'))
+                      ? const Center(child: Text('Закупы на оприходывании отсутствуют'))
                       : ListView.separated(
                           padding: const EdgeInsets.all(16),
                           itemCount: _arrivals.length,
@@ -339,39 +352,40 @@ class _ProductProcurementScreenState extends State<ProductProcurementScreen> {
                           itemBuilder: (context, i) {
                             final p = _arrivals[i];
                             return _buildCard(p, trailingActions: [
-                              // Кнопка редактирования для суперадмина
+                              // Кнопка отклонения для суперадмина (заменили иконку на более видимую)
                               if (_currentUser?.role == 'superadmin')
                                 IconButton(
-                                  icon: const Icon(Icons.edit, color: Colors.blue),
-                                  tooltip: 'Редактировать',
-                                  onPressed: () => _editProcurement(p),
-                                ),
-                              if (_currentUser?.role == 'superadmin')
-                                const SizedBox(width: 8),
-                              // Кнопка отклонения для суперадмина
-                              if (_currentUser?.role == 'superadmin')
-                                IconButton(
-                                  icon: const Icon(Icons.undo, color: Colors.orange),
+                                  icon: const Icon(Icons.cancel, color: Colors.red),
                                   tooltip: 'Отклонить',
                                   onPressed: () => _rejectProcurement(p),
                                 ),
                               if (_currentUser?.role == 'superadmin')
                                 const SizedBox(width: 8),
-                              OutlinedButton(onPressed: () => _moveToShortage(p), child: const Text('Недостача')),
+                              // Кнопка оприходования
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.blue,
+                                  foregroundColor: Colors.white,
+                                ),
+                                child: const Text('Оприходовать'),
+                                onPressed: () => _stockItems(p),
+                              ),
                               const SizedBox(width: 8),
-                              ElevatedButton(onPressed: () => _moveToForSale(p), child: const Text('Выставка')),
-                              const SizedBox(width: 8),
-                              IconButton(
-                                icon: const Icon(Icons.receipt_long, color: Colors.green),
-                                tooltip: 'Сверка',
-                                onPressed: () => _openArrivalVerification(p),
+                              // Кнопка "Готово" (переводит на следующий этап)
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.green,
+                                  foregroundColor: Colors.white,
+                                ),
+                                child: const Text('Готово'),
+                                onPressed: () => _moveToShortage(p),
                               ),
                             ]);
                           },
                         ),
-                  // Недостача
+                  // Закупы на выставке на продажу
                   _shortages.isEmpty
-                      ? const Center(child: Text('Недостачи отсутствуют'))
+                      ? const Center(child: Text('Закупы на выставке на продажу отсутствуют'))
                       : ListView.separated(
                           padding: const EdgeInsets.all(16),
                           itemCount: _shortages.length,
@@ -391,19 +405,26 @@ class _ProductProcurementScreenState extends State<ProductProcurementScreen> {
                               // Кнопка отклонения для суперадмина
                               if (_currentUser?.role == 'superadmin')
                                 IconButton(
-                                  icon: const Icon(Icons.undo, color: Colors.orange),
+                                  icon: const Icon(Icons.cancel, color: Colors.red),
                                   tooltip: 'Отклонить',
                                   onPressed: () => _rejectProcurement(p),
                                 ),
                               if (_currentUser?.role == 'superadmin')
                                 const SizedBox(width: 8),
-                              ElevatedButton(onPressed: () => _moveToForSale(p), child: const Text('Выставка')),
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.purple,
+                                  foregroundColor: Colors.white,
+                                ),
+                                child: const Text('Выставить на продажу'),
+                                onPressed: () => _moveToForSale(p),
+                              ),
                             ]);
                           },
                         ),
-                  // Выставка на продажу
+                  // Закупы на продаже
                   _forSales.isEmpty
-                      ? const Center(child: Text('Пусто'))
+                      ? const Center(child: Text('Закупы на продаже отсутствуют'))
                       : ListView.separated(
                           padding: const EdgeInsets.all(16),
                           itemCount: _forSales.length,
@@ -423,7 +444,7 @@ class _ProductProcurementScreenState extends State<ProductProcurementScreen> {
                               // Кнопка отклонения для суперадмина
                               if (_currentUser?.role == 'superadmin')
                                 IconButton(
-                                  icon: const Icon(Icons.undo, color: Colors.orange),
+                                  icon: const Icon(Icons.cancel, color: Colors.red),
                                   tooltip: 'Отклонить',
                                   onPressed: () => _rejectProcurement(p),
                                 ),
@@ -437,11 +458,6 @@ class _ProductProcurementScreenState extends State<ProductProcurementScreen> {
   }
 }
 
-class _ProcItem {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  const _ProcItem({required this.icon, required this.title, required this.subtitle});
-}
+
 
 

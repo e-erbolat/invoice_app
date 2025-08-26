@@ -268,15 +268,27 @@ class InvoiceService {
   Future<List<Invoice>> getInvoicesByStatusAndSalesRepSimple(int status, String salesRepId) async {
     try {
       print('[InvoiceService] getInvoicesByStatusAndSalesRepSimple: статус=$status, salesRepId=$salesRepId');
+      
+      // Загружаем все накладные и фильтруем на клиенте, чтобы избежать проблем с индексами
       final querySnapshot = await _firestore
           .collection('invoices')
-          .where('status', isEqualTo: status)
-          .orderBy('date', descending: true)
           .get();
-      print('[InvoiceService] Получено накладных по статусу $status: ${querySnapshot.docs.length}');
-      final filteredDocs = querySnapshot.docs.where((doc) => doc.data()['salesRepId'] == salesRepId);
-      print('[InvoiceService] После фильтрации по salesRepId $salesRepId: ${filteredDocs.length}');
-      return filteredDocs.map((doc) {
+      
+      print('[InvoiceService] Получено всех накладных: ${querySnapshot.docs.length}');
+      
+      // Фильтруем по статусу и salesRepId на клиенте
+      final filteredDocs = querySnapshot.docs.where((doc) {
+        final data = doc.data();
+        return data['status'] == status && data['salesRepId'] == salesRepId;
+      });
+      
+      print('[InvoiceService] После фильтрации по статусу $status и salesRepId $salesRepId: ${filteredDocs.length}');
+      
+      // Сортируем по дате на клиенте
+      final sortedDocs = filteredDocs.toList()
+        ..sort((a, b) => (b.data()['date'] as Timestamp).compareTo(a.data()['date'] as Timestamp));
+      
+      return sortedDocs.map((doc) {
         final data = doc.data();
         return Invoice.fromMap(data);
       }).toList();
