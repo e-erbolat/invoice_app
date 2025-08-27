@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/purchase.dart';
+import '../models/purchase_item.dart';
 import '../models/product.dart';
 import 'firebase_service.dart';
 
@@ -16,6 +17,10 @@ class SatushiApiService {
     try {
       final url = Uri.parse('$_baseUrl/warehouse/income-request');
 
+      print('[SatushiApiService] Начинаем оприходование закупа: ${purchase.id}');
+      print('[SatushiApiService] Поставщик: ${purchase.supplierName}');
+      print('[SatushiApiService] Количество товаров: ${purchase.items.length}');
+
       // Формируем запрос для каждого товара
       final request = <Map<String, dynamic>>[];
 
@@ -23,9 +28,34 @@ class SatushiApiService {
         // Получаем satushiCode из продукта
         final product = await _getProductById(item.productId);
         if (product?.satushiCode != null && product!.satushiCode!.isNotEmpty) {
+          // Правильно рассчитываем количество для оприходования
+          // Учитываем принятые недостачи
+          int amountForStocking;
+          
+          print('[SatushiApiService] Товар: ${item.productName}');
+          print('[SatushiApiService] Статус: ${item.status} (${item.statusDisplayName})');
+          print('[SatushiApiService] Заказано: ${item.orderedQty}');
+          print('[SatushiApiService] Принято: ${item.receivedQty}');
+          print('[SatushiApiService] Недостача: ${item.missingQty}');
+          
+          if (item.status == PurchaseItemStatus.shortageReceived) {
+            // Если недостача была принята, используем полное количество
+            amountForStocking = item.orderedQty;
+            print('[SatushiApiService] Используем полное количество (shortageReceived): $amountForStocking');
+          } else if (item.receivedQty != null) {
+            // Если есть принятое количество, используем его
+            amountForStocking = item.receivedQty!;
+            print('[SatushiApiService] Используем принятое количество: $amountForStocking');
+          } else {
+            // Иначе используем заказанное количество
+            amountForStocking = item.orderedQty;
+            print('[SatushiApiService] Используем заказанное количество: $amountForStocking');
+          }
+          
+          
           request.add({
             'code': product.satushiCode!,
-            'amount': item.receivedQty ?? item.orderedQty,
+            'amount': amountForStocking,
             'purchasePrice': item.purchasePrice,
           });
         }
@@ -40,7 +70,9 @@ class SatushiApiService {
         'request': request,
       };
 
+      print('[SatushiApiService] === ФИНАЛЬНЫЙ ЗАПРОС ===');
       print('[SatushiApiService] Отправляем запрос: ${jsonEncode(body)}');
+      print('[SatushiApiService] ========================');
 
       final response = await http.post(
         url,

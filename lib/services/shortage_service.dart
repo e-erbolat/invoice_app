@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/shortage.dart';
 import '../models/purchase_item.dart';
+import '../models/purchase.dart';
 
 class ShortageService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -54,6 +55,9 @@ class ShortageService {
         receivedByUserName: userName ?? '',
       );
       await updateShortage(updatedShortage);
+      
+      // Обновляем соответствующий товар в закупе
+      await _updatePurchaseItemForShortage(shortage.purchaseId, shortage.purchaseItemId, updatedShortage);
     }
   }
 
@@ -67,6 +71,9 @@ class ShortageService {
         closedByUserName: userName ?? '',
       );
       await updateShortage(updatedShortage);
+      
+      // Обновляем соответствующий товар в закупе
+      await _updatePurchaseItemForShortageNotReceived(shortage.purchaseId, shortage.purchaseItemId, updatedShortage);
     }
   }
 
@@ -154,6 +161,58 @@ class ShortageService {
     final shortages = await getShortagesByPurchaseId(purchaseId);
     for (final shortage in shortages) {
       await deleteShortage(shortage.id);
+    }
+  }
+
+  // Приватный метод для обновления товара в закупе при получении недостачи
+  Future<void> _updatePurchaseItemForShortage(String purchaseId, String itemId, Shortage shortage) async {
+    try {
+      // Получаем закуп
+      final purchaseDoc = await _firestore.collection('purchases').doc(purchaseId).get();
+      if (!purchaseDoc.exists) return;
+
+      final purchase = Purchase.fromMap(purchaseDoc.data()!);
+      
+      // Обновляем товар
+      final updatedItems = purchase.items.map((item) {
+        if (item.id == itemId) {
+          return item.markShortageAsReceived();
+        }
+        return item;
+      }).toList();
+
+      final updatedPurchase = purchase.copyWith(items: updatedItems);
+      
+      // Сохраняем обновленный закуп
+      await _firestore.collection('purchases').doc(purchaseId).update(updatedPurchase.toMap());
+    } catch (e) {
+      print('Ошибка обновления товара закупа: $e');
+    }
+  }
+
+  // Приватный метод для обновления товара в закупе при отказе от недостачи
+  Future<void> _updatePurchaseItemForShortageNotReceived(String purchaseId, String itemId, Shortage shortage) async {
+    try {
+      // Получаем закуп
+      final purchaseDoc = await _firestore.collection('purchases').doc(purchaseId).get();
+      if (!purchaseDoc.exists) return;
+
+      final purchase = Purchase.fromMap(purchaseDoc.data()!);
+      
+      // Обновляем товар
+      final updatedItems = purchase.items.map((item) {
+        if (item.id == itemId) {
+          return item.markShortageAsNotReceived();
+        }
+        return item;
+      }).toList();
+
+      final updatedPurchase = purchase.copyWith(items: updatedItems);
+      
+      // Сохраняем обновленный закуп
+      await _firestore.collection('purchases').doc(purchaseId).update(updatedPurchase.toMap());
+    } catch (e) {
+      print('Ошибка обновления товара закупа: $e');
     }
   }
 }

@@ -81,9 +81,32 @@ class _PurchaseDetailScreenState extends State<PurchaseDetailScreen> {
     try {
       setState(() { _stockingInProgress = true; });
       
-      // Вызываем API для оприходования
+      // Получаем актуальные данные закупа перед отправкой в API
+      debugPrint('[PurchaseDetailScreen] Получаем актуальные данные закупа ${widget.purchase.id}');
+      final updatedPurchase = await _purchaseService.getPurchaseById(widget.purchase.id);
+      if (updatedPurchase == null) {
+        throw Exception('Не удалось получить актуальные данные закупа');
+      }
+      
+      debugPrint('[PurchaseDetailScreen] Актуальные данные получены:');
+      debugPrint('[PurchaseDetailScreen] Поставщик: ${updatedPurchase.supplierName}');
+      debugPrint('[PurchaseDetailScreen] Количество товаров: ${updatedPurchase.items.length}');
+      
+      // Логируем детали каждого товара
+      for (int i = 0; i < updatedPurchase.items.length; i++) {
+        final item = updatedPurchase.items[i];
+        debugPrint('[PurchaseDetailScreen] Товар $i: ${item.productName}');
+        debugPrint('[PurchaseDetailScreen]   - Заказано: ${item.orderedQty}');
+        debugPrint('[PurchaseDetailScreen]   - Принято: ${item.receivedQty}');
+        debugPrint('[PurchaseDetailScreen]   - Недостача: ${item.missingQty}');
+        debugPrint('[PurchaseDetailScreen]   - Статус: ${item.status} (${item.statusDisplayName})');
+      }
+      
+      debugPrint('[PurchaseDetailScreen] Отправляем в API');
+      
+      // Вызываем API для оприходования с актуальными данными
       final success = await _satushiApiService.incomeRequest(
-        widget.purchase, 
+        updatedPurchase, 
         _currentUser!.satushiToken!
       );
       
