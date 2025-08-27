@@ -158,8 +158,10 @@ class Purchase {
         return 'Создан';
       case PurchaseStatus.receiving:
         return 'Приемка';
+      case PurchaseStatus.stocked:
+        return 'Оприходовано';
       case PurchaseStatus.inStock:
-        return 'На складе';
+        return 'Принято на склад';
       case PurchaseStatus.onSale:
         return 'На продаже';
       case PurchaseStatus.completed:
@@ -178,6 +180,8 @@ class Purchase {
         return 0xFF2196F3; // Синий
       case PurchaseStatus.receiving:
         return 0xFFFF9800; // Оранжевый
+      case PurchaseStatus.stocked:
+        return 0xFF00BCD4; // Голубой
       case PurchaseStatus.inStock:
         return 0xFF4CAF50; // Зеленый
       case PurchaseStatus.onSale:

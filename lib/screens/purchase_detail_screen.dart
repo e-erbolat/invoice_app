@@ -4,6 +4,7 @@ import '../models/shortage.dart';
 import '../services/purchase_service.dart';
 import '../services/shortage_service.dart';
 import '../services/auth_service.dart';
+import '../services/satushi_api_service.dart';
 import '../models/app_user.dart';
 import 'goods_receiving_screen.dart';
 
@@ -19,9 +20,11 @@ class _PurchaseDetailScreenState extends State<PurchaseDetailScreen> {
   final PurchaseService _purchaseService = PurchaseService();
   final ShortageService _shortageService = ShortageService();
   final AuthService _authService = AuthService();
+  final SatushiApiService _satushiApiService = SatushiApiService();
   AppUser? _currentUser;
   List<Shortage> _shortages = [];
   bool _loadingShortages = false;
+  bool _stockingInProgress = false;
 
   @override
   void initState() {
@@ -60,6 +63,58 @@ class _PurchaseDetailScreenState extends State<PurchaseDetailScreen> {
           SnackBar(content: Text('Ошибка загрузки недостач: $e')),
         );
       }
+    }
+  }
+
+  /// Оприходовать товары закупа через API Satushi и принять на склад
+  Future<void> _stockItems() async {
+    if (_currentUser?.satushiToken == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Ошибка: отсутствует токен Satushi в профиле'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    try {
+      setState(() { _stockingInProgress = true; });
+      
+      // Вызываем API для оприходования
+      final success = await _satushiApiService.incomeRequest(
+        widget.purchase, 
+        _currentUser!.satushiToken!
+      );
+      
+      if (success) {
+        // Если оприходование успешно, переводим на следующий этап
+        debugPrint('[PurchaseDetailScreen] Оприходование успешно, обновляем статус закупа ${widget.purchase.id} на inStock');
+        await _purchaseService.updatePurchaseStatus(widget.purchase.id, PurchaseStatus.inStock);
+        debugPrint('[PurchaseDetailScreen] Статус закупа обновлен на inStock');
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Товары успешно оприходованы и приняты на склад!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        
+        // Возвращаемся назад с результатом для обновления списка
+        if (mounted) {
+          debugPrint('[PurchaseDetailScreen] Возвращаемся назад с результатом "stocked"');
+          Navigator.pop(context, 'stocked');
+        }
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Ошибка оприходования: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      setState(() { _stockingInProgress = false; });
     }
   }
 
@@ -317,14 +372,18 @@ class _PurchaseDetailScreenState extends State<PurchaseDetailScreen> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
-                  onPressed: () async {
-                    // TODO: Экран оприходования
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Функция оприходования в разработке')),
-                    );
-                  },
-                  icon: const Icon(Icons.inventory),
-                  label: const Text('Оприходовать'),
+                  onPressed: _stockingInProgress ? null : _stockItems,
+                  icon: _stockingInProgress 
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      )
+                    : const Icon(Icons.inventory),
+                  label: Text(_stockingInProgress ? 'Оприходование...' : 'Оприходовать'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blue,
                     foregroundColor: Colors.white,
