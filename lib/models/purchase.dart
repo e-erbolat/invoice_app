@@ -2,11 +2,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'purchase_item.dart';
 
 enum PurchaseStatus {
-  created,           // Создан, ожидает приемки
-  receiving,         // Идет приемка, есть принятые и/или недостающие товары
-  stocked,           // Товары оприходованы (новый этап)
-  inStock,          // Товары приняты на склад
-  onSale,           // Товары выставлены на продажу
+  created,           // 1. Создание (ожидание)
+  receiving,         // 2. Оприходывание
+  stocked,           // 3. Принять на склад
+  inStock,          // 4. Выставка на продажу
+  onSale,           // 5. Архив заказов
   completed,         // Все товары получены, оприходованы и выставлены
   closedWithShortage, // Закуп закрыт, но часть товаров так и не поступила
   archived,          // Закуп перенесен в архив
@@ -23,8 +23,8 @@ class Purchase {
   final String? notes;
   final String createdByUserId;
   final String createdByUserName;
-  final Timestamp? receivedAt;      // Дата приемки
-  final Timestamp? stockedAt;       // Дата оприходования
+  final Timestamp? receivedAt;      // Дата оприходывания
+  final Timestamp? stockedAt;       // Дата принятия на склад
   final Timestamp? onSaleAt;        // Дата выставки на продажу
   final Timestamp? completedAt;     // Дата завершения
   final Timestamp? archivedAt;      // Дата архивации
@@ -40,11 +40,11 @@ class Purchase {
     this.notes,
     required this.createdByUserId,
     required this.createdByUserName,
-    this.receivedAt,
-    this.stockedAt,
-    this.onSaleAt,
-    this.completedAt,
-    this.archivedAt,
+    this.receivedAt,      // Дата оприходывания
+    this.stockedAt,       // Дата принятия на склад
+    this.onSaleAt,        // Дата выставки на продажу
+    this.completedAt,     // Дата завершения
+    this.archivedAt,      // Дата архивации
   });
 
   factory Purchase.create({
@@ -81,11 +81,11 @@ class Purchase {
     String? notes,
     String? createdByUserId,
     String? createdByUserName,
-    Timestamp? receivedAt,
-    Timestamp? stockedAt,
-    Timestamp? onSaleAt,
-    Timestamp? completedAt,
-    Timestamp? archivedAt,
+    Timestamp? receivedAt,      // Дата оприходывания
+    Timestamp? stockedAt,       // Дата принятия на склад
+    Timestamp? onSaleAt,        // Дата выставки на продажу
+    Timestamp? completedAt,     // Дата завершения
+    Timestamp? archivedAt,      // Дата архивации
   }) {
     return Purchase(
       id: id ?? this.id,
@@ -98,11 +98,11 @@ class Purchase {
       notes: notes ?? this.notes,
       createdByUserId: createdByUserId ?? this.createdByUserId,
       createdByUserName: createdByUserName ?? this.createdByUserName,
-      receivedAt: receivedAt ?? this.receivedAt,
-      stockedAt: stockedAt ?? this.stockedAt,
-      onSaleAt: onSaleAt ?? this.onSaleAt,
-      completedAt: completedAt ?? this.completedAt,
-      archivedAt: archivedAt ?? this.archivedAt,
+      receivedAt: receivedAt ?? this.receivedAt,      // Дата оприходывания
+      stockedAt: stockedAt ?? this.stockedAt,        // Дата принятия на склад
+      onSaleAt: onSaleAt ?? this.onSaleAt,            // Дата выставки на продажу
+      completedAt: completedAt ?? this.completedAt,    // Дата завершения
+      archivedAt: archivedAt ?? this.archivedAt,      // Дата архивации
     );
   }
 
@@ -117,11 +117,11 @@ class Purchase {
     'notes': notes,
     'createdByUserId': createdByUserId,
     'createdByUserName': createdByUserName,
-    'receivedAt': receivedAt,
-    'stockedAt': stockedAt,
-    'onSaleAt': onSaleAt,
-    'completedAt': completedAt,
-    'archivedAt': archivedAt,
+    'receivedAt': receivedAt,      // Дата оприходывания
+    'stockedAt': stockedAt,        // Дата принятия на склад
+    'onSaleAt': onSaleAt,          // Дата выставки на продажу
+    'completedAt': completedAt,    // Дата завершения
+    'archivedAt': archivedAt,      // Дата архивации
   };
 
   factory Purchase.fromMap(Map<String, dynamic> map) => Purchase(
@@ -135,11 +135,11 @@ class Purchase {
     notes: map['notes'],
     createdByUserId: map['createdByUserId'] ?? '',
     createdByUserName: map['createdByUserName'] ?? '',
-    receivedAt: map['receivedAt'],
-    stockedAt: map['stockedAt'],
-    onSaleAt: map['onSaleAt'],
-    completedAt: map['completedAt'],
-    archivedAt: map['archivedAt'],
+    receivedAt: map['receivedAt'],      // Дата оприходывания
+    stockedAt: map['stockedAt'],        // Дата принятия на склад
+    onSaleAt: map['onSaleAt'],          // Дата выставки на продажу
+    completedAt: map['completedAt'],    // Дата завершения
+    archivedAt: map['archivedAt'],      // Дата архивации
   );
 
   // Вычисляемые свойства
@@ -157,13 +157,13 @@ class Purchase {
       case PurchaseStatus.created:
         return 'Создан';
       case PurchaseStatus.receiving:
-        return 'Приемка';
+        return 'Оприходывание';
       case PurchaseStatus.stocked:
-        return 'Оприходовано';
+        return 'Принять на склад';
       case PurchaseStatus.inStock:
-        return 'Принято на склад';
+        return 'Выставка на продажу';
       case PurchaseStatus.onSale:
-        return 'На продаже';
+        return 'Архив заказов';
       case PurchaseStatus.completed:
         return 'Завершен';
       case PurchaseStatus.closedWithShortage:

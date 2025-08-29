@@ -112,13 +112,13 @@ class _PurchaseDetailScreenState extends State<PurchaseDetailScreen> {
       
       if (success) {
         // Если оприходование успешно, переводим на следующий этап
-        debugPrint('[PurchaseDetailScreen] Оприходование успешно, обновляем статус закупа ${widget.purchase.id} на inStock');
-        await _purchaseService.updatePurchaseStatus(widget.purchase.id, PurchaseStatus.inStock);
-        debugPrint('[PurchaseDetailScreen] Статус закупа обновлен на inStock');
+        debugPrint('[PurchaseDetailScreen] Оприходование успешно, обновляем статус закупа ${widget.purchase.id} на stocked');
+        await _purchaseService.updatePurchaseStatus(widget.purchase.id, PurchaseStatus.stocked);
+        debugPrint('[PurchaseDetailScreen] Статус закупа обновлен на stocked');
         
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Товары успешно оприходованы и приняты на склад!'),
+            content: Text('Товары успешно оприходованы!'),
             backgroundColor: Colors.green,
           ),
         );
@@ -173,13 +173,17 @@ class _PurchaseDetailScreenState extends State<PurchaseDetailScreen> {
             previousStatus = PurchaseStatus.created;
             statusMessage = 'Закуп возвращен в статус "Создан"';
             break;
-          case PurchaseStatus.inStock:
+          case PurchaseStatus.stocked:
             previousStatus = PurchaseStatus.receiving;
-            statusMessage = 'Закуп возвращен в статус "Приемка"';
+            statusMessage = 'Закуп возвращен в статус "Оприходывание"';
+            break;
+          case PurchaseStatus.inStock:
+            previousStatus = PurchaseStatus.stocked;
+            statusMessage = 'Закуп возвращен в статус "Принять на склад"';
             break;
           case PurchaseStatus.onSale:
             previousStatus = PurchaseStatus.inStock;
-            statusMessage = 'Закуп возвращен в статус "На складе"';
+            statusMessage = 'Закуп возвращен в статус "Выставка на продажу"';
             break;
           default:
             // Для закупа в статусе "created" нельзя отклонить
