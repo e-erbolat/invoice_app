@@ -17,6 +17,10 @@ import '../services/invoice_service.dart';
 import '../models/invoice.dart';
 import 'analytics_screen.dart';
 import 'profile_screen.dart';
+import '../services/purchase_service.dart';
+import '../services/shortage_service.dart';
+import '../models/purchase.dart';
+import '../models/shortage.dart';
 
 // Если есть отдельный экран профиля, импортируйте его, иначе будет заглушка
 
@@ -34,6 +38,8 @@ class _HomeScreenState extends State<HomeScreen> {
   double _totalCashAmount = 0.0;
   final CashRegisterService _cashRegisterService = CashRegisterService();
   final InvoiceService _invoiceService = InvoiceService();
+  final PurchaseService _purchaseService = PurchaseService();
+  final ShortageService _shortageService = ShortageService();
 
   // Счетчики для бейджей
   int _countReview = 0;
@@ -41,6 +47,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int _countDelivery = 0;
   int _countDelivered = 0;
   int _countPayment = 0;
+  int _activeProcurementsCount = 0;
 
   List<Widget> get _tabBodies => [
     _InvoicesTab(user: _user),
@@ -56,6 +63,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadUser();
     _loadCashAmount();
     _loadInvoiceCounters();
+    _loadActiveProcurementsCount();
   }
 
   @override
@@ -128,6 +136,35 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _loadActiveProcurementsCount() async {
+    try {
+      // Получаем все закупы
+      final purchases = await _purchaseService.getAllPurchases();
+      
+      // Подсчитываем активные закупы (не в архиве)
+      final activePurchases = purchases.where((p) => 
+        p.status != PurchaseStatus.completed && 
+        p.status != PurchaseStatus.closedWithShortage
+      ).length;
+      
+      // Получаем все недостачи
+      final shortages = await _shortageService.getAllShortages();
+      
+      // Подсчитываем активные недостачи (не завершенные)
+      final activeShortages = shortages.where((s) => 
+        s.status != ShortageStatus.completed
+      ).length;
+      
+      if (mounted) {
+        setState(() {
+          _activeProcurementsCount = activePurchases + activeShortages;
+        });
+      }
+    } catch (e) {
+      print('[HomeScreen] Ошибка загрузки счетчика активных закупов: $e');
+    }
+  }
+
   Widget _buildAdminInvoicesTab(BuildContext context) {
     final isAdmin = _user?.role == 'admin' || _user?.role == 'superadmin';
     final sections = [
@@ -142,7 +179,8 @@ class _HomeScreenState extends State<HomeScreen> {
           {'emoji': '💰', 'label': 'Касса', 'route': '/cash_register'},
         if (_user?.role == 'admin' || _user?.role == 'superadmin')
           {'emoji': '💸', 'label': 'Расходы', 'route': '/cash_expenses'},
-
+        {'emoji': '🛍️', 'label': 'Активные закупы', 'route': '/active_procurements', 'count': _activeProcurementsCount},
+        {'emoji': '📚', 'label': 'Каталог товаров', 'route': '/products', 'count': _activeProcurementsCount > 0 ? _activeProcurementsCount : null},
       ]
     ];
     return Column(
@@ -189,6 +227,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           }
                           // Обновляем бейджи при возврате
                           _loadInvoiceCounters();
+                          _loadActiveProcurementsCount();
                         });
                       },
                     ),
@@ -242,7 +281,12 @@ class _HomeScreenState extends State<HomeScreen> {
       if (isAdmin)
         {'icon': Icons.archive, 'label': 'Архив накладных', 'route': '/invoice_list'},
       if (isAdmin)
-        {'icon': Icons.inventory_2, 'label': 'Каталог товаров', 'route': '/products'},
+        {
+          'icon': Icons.inventory_2, 
+          'label': 'Каталог товаров', 
+          'route': '/products',
+          'badge': _activeProcurementsCount > 0 ? _activeProcurementsCount.toString() : null
+        },
       if (isAdmin)
         {'icon': Icons.location_city, 'label': 'Отчёт по точкам', 'route': '/outlet_report'},
       if (isAdmin)
@@ -358,24 +402,53 @@ class _HomeScreenState extends State<HomeScreen> {
           }
         },
         type: BottomNavigationBarType.fixed,
-        items: const [
-          BottomNavigationBarItem(
+        items: [
+          const BottomNavigationBarItem(
             icon: Icon(Icons.receipt_long),
             label: 'Накладные',
           ),
-          BottomNavigationBarItem(
+          const BottomNavigationBarItem(
             icon: Icon(Icons.people),
             label: 'Клиенты',
           ),
-          BottomNavigationBarItem(
+          const BottomNavigationBarItem(
             icon: Icon(Icons.people_alt),
             label: 'Торговые',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.inventory_2),
+            icon: Stack(
+              children: [
+                const Icon(Icons.inventory_2),
+                if (_activeProcurementsCount > 0)
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(
+                        color: Colors.red,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      constraints: const BoxConstraints(
+                        minWidth: 16,
+                        minHeight: 16,
+                      ),
+                      child: Text(
+                        _activeProcurementsCount.toString(),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
             label: 'Каталог',
           ),
-          BottomNavigationBarItem(
+          const BottomNavigationBarItem(
             icon: Icon(Icons.analytics),
             label: 'Аналитика',
           ),
