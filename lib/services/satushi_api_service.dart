@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/purchase.dart';
 import '../models/purchase_item.dart';
+import '../models/shortage.dart';
 import '../models/product.dart';
 import 'firebase_service.dart';
 
@@ -97,6 +98,73 @@ class SatushiApiService {
       }
     } catch (e) {
       print('[SatushiApiService] Ошибка оприходования: $e');
+      rethrow;
+    }
+  }
+
+  /// Оприходовать недостачи через API Satushi (только количество недостачи)
+  Future<bool> incomeShortageRequest(List<Shortage> shortages, String satushiToken) async {
+    try {
+      final url = Uri.parse('$_baseUrl/warehouse/income-request');
+
+      print('[SatushiApiService] Начинаем оприходование недостач');
+      print('[SatushiApiService] Количество недостач: ${shortages.length}');
+
+      // Формируем запрос только для недостач
+      final request = <Map<String, dynamic>>[];
+
+      for (final shortage in shortages) {
+        // Получаем satushiCode из продукта
+        final product = await _getProductById(shortage.productId);
+        if (product?.satushiCode != null && product!.satushiCode!.isNotEmpty) {
+          print('[SatushiApiService] Недостача: ${shortage.productName}');
+          print('[SatushiApiService] Количество недостачи: ${shortage.missingQty}');
+          print('[SatushiApiService] Satushi код: ${product.satushiCode}');
+          
+          request.add({
+            'code': product.satushiCode!,
+            'amount': shortage.missingQty, // Используем только количество недостачи
+            'purchasePrice': 0, // Для недостач цена может быть 0 или не указана
+          });
+        }
+      }
+
+      if (request.isEmpty) {
+        throw Exception('Нет недостач с satushiCode для оприходования');
+      }
+
+      final body = {
+        'warehouseId': _warehouseId,
+        'request': request,
+      };
+
+      print('[SatushiApiService] === ФИНАЛЬНЫЙ ЗАПРОС ДЛЯ НЕДОСТАЧ ===');
+      print('[SatushiApiService] Отправляем запрос: ${jsonEncode(body)}');
+      print('[SatushiApiService] ========================');
+
+      final response = await http.post(
+        url,
+        headers: {
+          'Authorization': 'Bearer $satushiToken',
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'User-Agent': 'invoice_app/1.0 (+satushi integration)'
+        },
+        body: jsonEncode(body),
+      );
+
+      if (response.statusCode == 200) {
+        print('[SatushiApiService] Успешное оприходование недостач:');
+        return true;
+      } else {
+        print(
+            '[SatushiApiService] Ошибка API для недостач: ${response.statusCode} - ${response
+                .body}');
+        throw Exception(
+            'Ошибка API для недостач: ${response.statusCode} - ${response.body}');
+      }
+    } catch (e) {
+      print('[SatushiApiService] Ошибка оприходования недостач: $e');
       rethrow;
     }
   }

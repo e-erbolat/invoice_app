@@ -1,4 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import '../models/shortage.dart';
 import '../models/purchase_item.dart';
 import '../models/purchase.dart';
@@ -58,6 +60,58 @@ class ShortageService {
       
       // Обновляем соответствующий товар в закупе
       await _updatePurchaseItemForShortage(shortage.purchaseId, shortage.purchaseItemId, updatedShortage);
+    }
+  }
+
+  // Отметить недостачу как оприходованную
+  Future<void> markShortageAsStocked(String shortageId, {String? userId, String? userName}) async {
+    final doc = await _firestore.collection('shortages').doc(shortageId).get();
+    if (doc.exists) {
+      final shortage = Shortage.fromMap(doc.data()!);
+      final updatedShortage = shortage.markAsStocked(
+        stockedByUserId: userId ?? '',
+        stockedByUserName: userName ?? '',
+      );
+      await updateShortage(updatedShortage);
+    }
+  }
+
+  // Отметить недостачу как принятую на склад
+  Future<void> markShortageAsInStock(String shortageId, {String? userId, String? userName}) async {
+    final doc = await _firestore.collection('shortages').doc(shortageId).get();
+    if (doc.exists) {
+      final shortage = Shortage.fromMap(doc.data()!);
+      final updatedShortage = shortage.markAsInStock(
+        inStockByUserId: userId ?? '',
+        inStockByUserName: userName ?? '',
+      );
+      await updateShortage(updatedShortage);
+    }
+  }
+
+  // Отметить недостачу как выставленную на продажу
+  Future<void> markShortageAsOnSale(String shortageId, {String? userId, String? userName}) async {
+    final doc = await _firestore.collection('shortages').doc(shortageId).get();
+    if (doc.exists) {
+      final shortage = Shortage.fromMap(doc.data()!);
+      final updatedShortage = shortage.markAsOnSale(
+        onSaleByUserId: userId ?? '',
+        onSaleByUserName: userName ?? '',
+      );
+      await updateShortage(updatedShortage);
+    }
+  }
+
+  // Отметить недостачу как завершенную
+  Future<void> markShortageAsCompleted(String shortageId, {String? userId, String? userName}) async {
+    final doc = await _firestore.collection('shortages').doc(shortageId).get();
+    if (doc.exists) {
+      final shortage = Shortage.fromMap(doc.data()!);
+      final updatedShortage = shortage.markAsCompleted(
+        completedByUserId: userId ?? '',
+        completedByUserName: userName ?? '',
+      );
+      await updateShortage(updatedShortage);
     }
   }
 
