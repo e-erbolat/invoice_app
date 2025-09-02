@@ -23,6 +23,10 @@ class _ShortageManagementScreenState extends State<ShortageManagementScreen> {
   String? _error;
   ShortageStatus _selectedStatus = ShortageStatus.waiting;
   final Map<String, bool> _stockingInProgress = {};
+  
+  // Кэширование для улучшения производительности
+  DateTime? _lastLoadTime;
+  static const Duration _cacheValidDuration = Duration(minutes: 5);
 
   @override
   void initState() {
@@ -40,13 +44,49 @@ class _ShortageManagementScreenState extends State<ShortageManagementScreen> {
     }
   }
 
-  Future<void> _loadShortages() async {
+  Future<void> _loadShortages({bool forceRefresh = false}) async {
+    // Проверяем кэш, если не требуется принудительное обновление
+    if (!forceRefresh && _lastLoadTime != null && 
+        DateTime.now().difference(_lastLoadTime!) < _cacheValidDuration &&
+        _shortages.isNotEmpty) {
+      print('[ShortageManagementScreen] Используем кэшированные данные недостач');
+      return;
+    }
+
     setState(() {
       _loading = true;
       _error = null;
     });
 
     try {
+      // Получаем все недостачи за один запрос (без очистки дубликатов)
+      final shortages = await _shortageService.getAllShortages();
+      
+      if (mounted) {
+        setState(() {
+          _shortages = shortages;
+          _lastLoadTime = DateTime.now();
+          _loading = false;
+        });
+        print('[ShortageManagementScreen] Загружено ${shortages.length} недостач');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = 'Ошибка загрузки недостач: $e';
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  // Отдельный метод для очистки дубликатов (вызывается только при необходимости)
+  Future<void> _cleanupDuplicateShortages() async {
+    try {
+      setState(() {
+        _loading = true;
+      });
+
       // Получаем все недостачи
       final allShortages = await _shortageService.getAllShortages();
       
@@ -61,13 +101,14 @@ class _ShortageManagementScreenState extends State<ShortageManagementScreen> {
       if (mounted) {
         setState(() {
           _shortages = shortages;
+          _lastLoadTime = DateTime.now();
           _loading = false;
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = 'Ошибка загрузки недостач: $e';
+          _error = 'Ошибка очистки дубликатов: $e';
           _loading = false;
         });
       }
@@ -85,7 +126,7 @@ class _ShortageManagementScreenState extends State<ShortageManagementScreen> {
         userId: _currentUser?.uid,
         userName: _currentUser?.name ?? _currentUser?.email,
       );
-      _loadShortages();
+      _loadShortages(forceRefresh: true);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Недостача отмечена как полученная')),
       );
@@ -127,7 +168,7 @@ class _ShortageManagementScreenState extends State<ShortageManagementScreen> {
           userId: _currentUser?.uid,
           userName: _currentUser?.name ?? _currentUser?.email,
         );
-        _loadShortages();
+        _loadShortages(forceRefresh: true);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Недостача успешно оприходована через Satushi API!'),
@@ -159,7 +200,7 @@ class _ShortageManagementScreenState extends State<ShortageManagementScreen> {
         userId: _currentUser?.uid,
         userName: _currentUser?.name ?? _currentUser?.email,
       );
-      _loadShortages();
+      _loadShortages(forceRefresh: true);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Недостача принята на склад')),
       );
@@ -177,7 +218,7 @@ class _ShortageManagementScreenState extends State<ShortageManagementScreen> {
         userId: _currentUser?.uid,
         userName: _currentUser?.name ?? _currentUser?.email,
       );
-      _loadShortages();
+      _loadShortages(forceRefresh: true);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Недостача выставлена на продажу')),
       );
@@ -195,7 +236,7 @@ class _ShortageManagementScreenState extends State<ShortageManagementScreen> {
         userId: _currentUser?.uid,
         userName: _currentUser?.name ?? _currentUser?.email,
       );
-      _loadShortages();
+      _loadShortages(forceRefresh: true);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Недостача завершена')),
       );
@@ -213,7 +254,7 @@ class _ShortageManagementScreenState extends State<ShortageManagementScreen> {
         userId: _currentUser?.uid,
         userName: _currentUser?.name ?? _currentUser?.email,
       );
-      _loadShortages();
+      _loadShortages(forceRefresh: true);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Недостача отмечена как не полученная')),
       );
@@ -223,8 +264,6 @@ class _ShortageManagementScreenState extends State<ShortageManagementScreen> {
       );
     }
   }
-
-
 
   // Метод для построения списка недостач по статусу
   Widget _buildShortagesListByStatus(ShortageStatus status) {
@@ -297,8 +336,13 @@ class _ShortageManagementScreenState extends State<ShortageManagementScreen> {
           actions: [
             IconButton(
               icon: const Icon(Icons.refresh),
-              onPressed: _loadShortages,
+              onPressed: () => _loadShortages(forceRefresh: true),
               tooltip: 'Обновить',
+            ),
+            IconButton(
+              icon: const Icon(Icons.cleaning_services),
+              onPressed: _cleanupDuplicateShortages,
+              tooltip: 'Очистить дубликаты',
             ),
           ],
           bottom: TabBar(
@@ -445,101 +489,6 @@ class _ShortageManagementScreenState extends State<ShortageManagementScreen> {
             _buildShortagesListByStatus(ShortageStatus.completed),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildStatCard(String title, String value, Color color) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: color.withValues(alpha: 0.3)),
-        ),
-        child: Column(
-          children: [
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
-            ),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey[600],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildShortagesList() {
-    if (_loading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (_error != null) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.error_outline, size: 64, color: Colors.red[300]),
-            const SizedBox(height: 16),
-            Text(
-              _error!,
-              style: const TextStyle(fontSize: 16),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _loadShortages,
-              child: const Text('Повторить'),
-            ),
-          ],
-        ),
-      );
-    }
-
-    final filteredShortages = _filteredShortages;
-
-    if (filteredShortages.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.inventory_2_outlined, size: 64, color: Colors.grey[400]),
-            const SizedBox(height: 16),
-            Text(
-                             'Нет недостач со статусом "${_getStatusDisplayName(_selectedStatus)}"',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Попробуйте выбрать другой статус',
-              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return RefreshIndicator(
-      onRefresh: _loadShortages,
-      child: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: filteredShortages.length,
-        itemBuilder: (context, index) {
-          final shortage = filteredShortages[index];
-          return _buildShortageCard(shortage);
-        },
       ),
     );
   }
@@ -847,5 +796,4 @@ class _ShortageManagementScreenState extends State<ShortageManagementScreen> {
       ),
     );
   }
-
 }

@@ -13,28 +13,50 @@ class ShortageService {
     await _firestore.collection('shortages').doc(shortage.id).set(shortage.toMap());
   }
 
-  // Получение всех недостач
+  // Получение всех недостач с оптимизацией
   Future<List<Shortage>> getAllShortages() async {
-    final snapshot = await _firestore.collection('shortages').get();
-    return snapshot.docs.map((doc) => Shortage.fromMap(doc.data())).toList();
+    try {
+      final snapshot = await _firestore
+          .collection('shortages')
+          .orderBy('createdAt', descending: true) // Сортируем по дате создания
+          .limit(1000) // Ограничиваем количество для производительности
+          .get();
+      
+      return snapshot.docs.map((doc) => Shortage.fromMap(doc.data())).toList();
+    } catch (e) {
+      print('[ShortageService] Ошибка получения всех недостач: $e');
+      return [];
+    }
   }
 
-  // Получение недостач по ID закупа
+  // Получение недостач по ID закупа с оптимизацией
   Future<List<Shortage>> getShortagesByPurchaseId(String purchaseId) async {
-    final snapshot = await _firestore
-        .collection('shortages')
-        .where('purchaseId', isEqualTo: purchaseId)
-        .get();
-    return snapshot.docs.map((doc) => Shortage.fromMap(doc.data())).toList();
+    try {
+      final snapshot = await _firestore
+          .collection('shortages')
+          .where('purchaseId', isEqualTo: purchaseId)
+          .orderBy('createdAt', descending: true)
+          .get();
+      return snapshot.docs.map((doc) => Shortage.fromMap(doc.data())).toList();
+    } catch (e) {
+      print('[ShortageService] Ошибка получения недостач по ID закупа: $e');
+      return [];
+    }
   }
 
-  // Получение недостач по статусу
+  // Получение недостач по статусу с оптимизацией
   Future<List<Shortage>> getShortagesByStatus(ShortageStatus status) async {
-    final snapshot = await _firestore
-        .collection('shortages')
-        .where('status', isEqualTo: status.index)
-        .get();
-    return snapshot.docs.map((doc) => Shortage.fromMap(doc.data())).toList();
+    try {
+      final snapshot = await _firestore
+          .collection('shortages')
+          .where('status', isEqualTo: status.index)
+          .orderBy('createdAt', descending: true)
+          .get();
+      return snapshot.docs.map((doc) => Shortage.fromMap(doc.data())).toList();
+    } catch (e) {
+      print('[ShortageService] Ошибка получения недостач по статусу: $e');
+      return [];
+    }
   }
 
   // Получение ожидаемых недостач (waiting)
@@ -188,25 +210,40 @@ class ShortageService {
     };
   }
 
-  // Удаление дублирующихся недостач для закупа
+  // Удаление дублирующихся недостач для закупа (оптимизированная версия)
   Future<void> removeDuplicateShortages(String purchaseId) async {
-    final shortages = await getShortagesByPurchaseId(purchaseId);
-    
-    // Группируем недостачи по purchaseItemId
-    final groupedShortages = <String, List<Shortage>>{};
-    for (final shortage in shortages) {
-      groupedShortages.putIfAbsent(shortage.purchaseItemId, () => []).add(shortage);
-    }
-    
-    // Удаляем дубликаты, оставляя только первую недостачу для каждой позиции
-    for (final entry in groupedShortages.entries) {
-      final itemShortages = entry.value;
-      if (itemShortages.length > 1) {
-        // Оставляем первую недостачу, удаляем остальные
-        for (int i = 1; i < itemShortages.length; i++) {
-          await deleteShortage(itemShortages[i].id);
+    try {
+      final shortages = await getShortagesByPurchaseId(purchaseId);
+      
+      if (shortages.length <= 1) return; // Нет дубликатов
+      
+      // Группируем недостачи по purchaseItemId
+      final groupedShortages = <String, List<Shortage>>{};
+      for (final shortage in shortages) {
+        groupedShortages.putIfAbsent(shortage.purchaseItemId, () => []).add(shortage);
+      }
+      
+      // Собираем ID для удаления
+      final idsToDelete = <String>[];
+      for (final entry in groupedShortages.entries) {
+        final itemShortages = entry.value;
+        if (itemShortages.length > 1) {
+          // Оставляем первую недостачу, помечаем остальные для удаления
+          for (int i = 1; i < itemShortages.length; i++) {
+            idsToDelete.add(itemShortages[i].id);
+          }
         }
       }
+      
+      // Удаляем дубликаты пакетно
+      if (idsToDelete.isNotEmpty) {
+        print('[ShortageService] Удаляем ${idsToDelete.length} дубликатов для закупа $purchaseId');
+        for (final id in idsToDelete) {
+          await deleteShortage(id);
+        }
+      }
+    } catch (e) {
+      print('[ShortageService] Ошибка удаления дубликатов: $e');
     }
   }
 
