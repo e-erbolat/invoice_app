@@ -25,6 +25,7 @@ import 'screens/cash_expenses_screen.dart';
 import 'screens/data_export_screen.dart';
 import 'screens/outlet_sales_analytics_screen.dart';
 import 'screens/product_sales_analytics_screen.dart';
+import 'screens/sales_analysis_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -67,6 +68,7 @@ class MyApp extends StatelessWidget {
         '/data_export': (_) => const DataExportScreen(),
         '/outlet_analytics': (_) => const OutletSalesAnalyticsScreen(),
         '/product_analytics': (_) => const ProductSalesAnalyticsScreen(),
+        '/sales_analysis': (_) => const SalesAnalysisScreen(),
       },
     );
   }

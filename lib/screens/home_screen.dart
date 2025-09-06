@@ -181,6 +181,7 @@ class _HomeScreenState extends State<HomeScreen> {
           {'emoji': '💸', 'label': 'Расходы', 'route': '/cash_expenses'},
         {'emoji': '🛍️', 'label': 'Активные закупы', 'route': '/active_procurements', 'count': _activeProcurementsCount},
         {'emoji': '📚', 'label': 'Каталог товаров', 'route': '/products', 'count': _activeProcurementsCount > 0 ? _activeProcurementsCount : null},
+        {'emoji': '📊', 'label': 'Анализ работы торговых', 'route': '/sales_analysis'},
       ]
     ];
     return Column(
