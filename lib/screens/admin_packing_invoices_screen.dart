@@ -344,7 +344,7 @@ class _AdminPackingInvoicesScreenState extends State<AdminPackingInvoicesScreen>
         context: context,
         builder: (context) => AlertDialog(
           title: Text('Отклонить накладную?'),
-          content: Text('Вы уверены, что хотите отклонить накладную №${invoice.id} и вернуть её на рассмотрение?'),
+          content: Text('Вы уверены, что хотите отклонить накладную №${invoice.id} и вернуть её на предыдущий этап?'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
@@ -353,19 +353,28 @@ class _AdminPackingInvoicesScreenState extends State<AdminPackingInvoicesScreen>
             ElevatedButton(
               onPressed: () async {
                 Navigator.pop(context);
-                // Возвращаем накладную в статус "на рассмотрении"
-                await _invoiceService.updateInvoiceStatus(invoice.id, InvoiceStatus.review);
-                _loadData();
-                
-                // Показываем сообщение об успехе
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Накладная возвращена на рассмотрение'),
-                    backgroundColor: Colors.orange,
-                  ),
-                );
+                try {
+                  // Используем новый метод отклонения
+                  await _invoiceService.rejectInvoiceToPreviousStatus(invoice.id, invoice.status);
+                  _loadData();
+                  
+                  // Показываем сообщение об успехе
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Накладная отклонена и возвращена на предыдущий этап'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Ошибка отклонения: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
               },
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
               child: Text('Отклонить'),
             ),
           ],

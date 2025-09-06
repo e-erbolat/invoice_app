@@ -742,6 +742,51 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
                                     },
                                     tooltip: 'Детали накладной',
                                   ),
+                                  // Кнопка отклонения (только для суперадмина)
+                                  if (_currentUser?.role == 'superadmin')
+                                    IconButton(
+                                      icon: const Icon(Icons.arrow_back, color: Colors.orange),
+                                      onPressed: () async {
+                                        final confirm = await showDialog<bool>(
+                                          context: context,
+                                          builder: (context) => AlertDialog(
+                                            title: const Text('Отклонить накладную?'),
+                                            content: const Text('Вы уверены, что хотите отклонить накладную и вернуть её на предыдущий этап?'),
+                                            actions: [
+                                              TextButton(
+                                                onPressed: () => Navigator.pop(context, false),
+                                                child: const Text('Отмена'),
+                                              ),
+                                              ElevatedButton(
+                                                onPressed: () async {
+                                                  Navigator.pop(context);
+                                                  try {
+                                                    await _invoiceService.rejectInvoiceToPreviousStatus(invoice.id, invoice.status);
+                                                    _loadUserAndInvoices();
+                                                    ScaffoldMessenger.of(context).showSnackBar(
+                                                      SnackBar(
+                                                        content: const Text('Накладная отклонена и возвращена на предыдущий этап'),
+                                                        backgroundColor: Colors.orange,
+                                                      ),
+                                                    );
+                                                  } catch (e) {
+                                                    ScaffoldMessenger.of(context).showSnackBar(
+                                                      SnackBar(
+                                                        content: Text('Ошибка отклонения: $e'),
+                                                        backgroundColor: Colors.red,
+                                                      ),
+                                                    );
+                                                  }
+                                                },
+                                                style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+                                                child: const Text('Отклонить'),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      },
+                                      tooltip: 'Отклонить (вернуть на предыдущий этап)',
+                                    ),
                                   // Чекбокс для выбора
                                   Checkbox(
                                     value: isSelected,

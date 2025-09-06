@@ -476,15 +476,59 @@ class _AdminIncomingInvoicesScreenState extends State<AdminIncomingInvoicesScree
                               ).then((_) => _loadData());
                             },
                           ),
-                        if (!widget.forSales)
-                                                     IconButton(
-                             icon: Icon(Icons.check_circle, color: Colors.green),
+                        if (!widget.forSales) ...[
+                          IconButton(
+                            icon: Icon(Icons.check_circle, color: Colors.green),
                             tooltip: 'Принять',
                             onPressed: () async {
                               await _invoiceService.updateInvoiceStatus(invoice.id, InvoiceStatus.packing);
                               _loadData();
                             },
                           ),
+                          IconButton(
+                            icon: Icon(Icons.arrow_back, color: Colors.orange),
+                            tooltip: 'Отклонить (вернуть на предыдущий этап)',
+                            onPressed: () async {
+                              final confirm = await showDialog<bool>(
+                                context: context,
+                                builder: (context) => AlertDialog(
+                                  title: Text('Отклонить накладную?'),
+                                  content: Text('Накладная будет возвращена на предыдущий этап. Продолжить?'),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(context, false), 
+                                      child: Text('Отмена')
+                                    ),
+                                    ElevatedButton(
+                                      onPressed: () => Navigator.pop(context, true), 
+                                      child: Text('Отклонить'),
+                                      style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+                                    ),
+                                  ],
+                                ),
+                              );
+                              if (confirm == true) {
+                                try {
+                                  await _invoiceService.rejectInvoiceToPreviousStatus(invoice.id, invoice.status);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Накладная отклонена и возвращена на предыдущий этап'),
+                                      backgroundColor: Colors.orange,
+                                    ),
+                                  );
+                                  _loadData();
+                                } catch (e) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Ошибка отклонения: $e'),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                }
+                              }
+                            },
+                          ),
+                        ],
                                                  IconButton(
                            icon: Icon(Icons.delete, color: Colors.red),
                           tooltip: 'Отклонить',

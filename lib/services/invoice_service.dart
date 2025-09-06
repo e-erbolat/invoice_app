@@ -347,6 +347,44 @@ class InvoiceService {
     }
   }
 
+  // Отклонить накладную (вернуть на предыдущий этап) - только для суперадмина
+  Future<void> rejectInvoiceToPreviousStatus(String invoiceId, int currentStatus) async {
+    try {
+      int previousStatus;
+      
+      // Определяем предыдущий статус в зависимости от текущего
+      switch (currentStatus) {
+        case InvoiceStatus.packing:
+          previousStatus = InvoiceStatus.review;
+          break;
+        case InvoiceStatus.delivery:
+          previousStatus = InvoiceStatus.packing;
+          break;
+        case InvoiceStatus.delivered:
+          previousStatus = InvoiceStatus.delivery;
+          break;
+        case InvoiceStatus.paymentChecked:
+          previousStatus = InvoiceStatus.delivered;
+          break;
+        case InvoiceStatus.archive:
+          previousStatus = InvoiceStatus.paymentChecked;
+          break;
+        default:
+          throw Exception('Невозможно отклонить накладную со статусом ${InvoiceStatus.getName(currentStatus)}');
+      }
+      
+      await _firestore.collection('invoices').doc(invoiceId).update({
+        'status': previousStatus,
+        'rejectedAt': Timestamp.now(),
+        'rejectedBy': 'superadmin', // Можно добавить ID пользователя
+      });
+      
+      print('[InvoiceService] Накладная $invoiceId отклонена с ${InvoiceStatus.getName(currentStatus)} на ${InvoiceStatus.getName(previousStatus)}');
+    } catch (e) {
+      throw Exception('Ошибка отклонения накладной: $e');
+    }
+  }
+
   // Обновить оплату, тип оплаты и комментарий по id накладной
   Future<void> updateInvoicePayment(String invoiceId, String? paymentType, String? comment, {double? bankAmount, double? cashAmount}) async {
     try {

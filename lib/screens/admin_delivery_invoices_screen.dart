@@ -343,31 +343,80 @@ class _AdminDeliveryInvoicesScreenState extends State<AdminDeliveryInvoicesScree
           ],
         ),
         trailing: !widget.forSales
-            ? ElevatedButton(
-                child: Text('Доставлен'),
-                onPressed: () async {
-                  final confirmed = await showDialog<bool>(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: Text('Подтвердите действие'),
-                      content: Text('Вы уверены, что хотите отметить накладную $customNumber как доставленную?'),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context, false),
-                          child: Text('Отмена'),
+            ? Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ElevatedButton(
+                    child: Text('Доставлен'),
+                    onPressed: () async {
+                      final confirmed = await showDialog<bool>(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: Text('Подтвердите действие'),
+                          content: Text('Вы уверены, что хотите отметить накладную $customNumber как доставленную?'),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              child: Text('Отмена'),
+                            ),
+                            ElevatedButton(
+                              onPressed: () => Navigator.pop(context, true),
+                              child: Text('Доставлен'),
+                            ),
+                          ],
                         ),
-                        ElevatedButton(
-                          onPressed: () => Navigator.pop(context, true),
-                          child: Text('Доставлен'),
+                      );
+                      if (confirmed == true) {
+                        await _invoiceService.updateInvoiceStatus(invoice.id, InvoiceStatus.delivered);
+                        _loadData();
+                      }
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    child: Text('Отклонить'),
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+                    onPressed: () async {
+                      final confirmed = await showDialog<bool>(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: Text('Отклонить накладную?'),
+                          content: Text('Вы уверены, что хотите отклонить накладную $customNumber и вернуть её на предыдущий этап?'),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              child: Text('Отмена'),
+                            ),
+                            ElevatedButton(
+                              onPressed: () async {
+                                Navigator.pop(context);
+                                try {
+                                  await _invoiceService.rejectInvoiceToPreviousStatus(invoice.id, invoice.status);
+                                  _loadData();
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Накладная отклонена и возвращена на предыдущий этап'),
+                                      backgroundColor: Colors.orange,
+                                    ),
+                                  );
+                                } catch (e) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Ошибка отклонения: $e'),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                }
+                              },
+                              style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+                              child: Text('Отклонить'),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                  );
-                  if (confirmed == true) {
-                    await _invoiceService.updateInvoiceStatus(invoice.id, InvoiceStatus.delivered);
-                    _loadData();
-                  }
-                },
+                      );
+                    },
+                  ),
+                ],
               )
             : null,
         onTap: () {

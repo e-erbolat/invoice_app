@@ -74,17 +74,14 @@ class _AdminPaymentCheckInvoicesScreenState extends State<AdminPaymentCheckInvoi
     setState(() { _isLoading = true; });
     
     try {
-      // Возвращаем накладную в статус "доставлен"
-      await _invoiceService.updateInvoice(invoice.copyWith(
-        status: InvoiceStatus.delivered,
-        acceptedBySuperAdmin: false,
-      ));
+      // Используем новый метод отклонения для возврата на предыдущий этап
+      await _invoiceService.rejectInvoiceToPreviousStatus(invoice.id, invoice.status);
       
       await _loadUserAndData();
       
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Накладная возвращена в статус "доставлен"'),
+          content: Text('Накладная отклонена и возвращена на предыдущий этап'),
           backgroundColor: Colors.orange,
         ),
       );
