@@ -6,6 +6,8 @@ import '../services/shortage_service.dart';
 import '../services/auth_service.dart';
 import '../services/satushi_api_service.dart';
 import '../models/app_user.dart';
+import '../services/firebase_service.dart';
+import '../models/product.dart';
 import 'goods_receiving_screen.dart';
 
 class PurchaseDetailScreen extends StatefulWidget {
@@ -21,6 +23,7 @@ class _PurchaseDetailScreenState extends State<PurchaseDetailScreen> {
   final ShortageService _shortageService = ShortageService();
   final AuthService _authService = AuthService();
   final SatushiApiService _satushiApiService = SatushiApiService();
+  final FirebaseService _firebaseService = FirebaseService();
   AppUser? _currentUser;
   List<Shortage> _shortages = [];
   bool _loadingShortages = false;
@@ -92,7 +95,8 @@ class _PurchaseDetailScreenState extends State<PurchaseDetailScreen> {
       debugPrint('[PurchaseDetailScreen] Поставщик: ${updatedPurchase.supplierName}');
       debugPrint('[PurchaseDetailScreen] Количество товаров: ${updatedPurchase.items.length}');
       
-      // Логируем детали каждого товара
+      // Проверяем наличие satushiCode у всех товаров
+      final List<String> productsWithoutSatushiCode = [];
       for (int i = 0; i < updatedPurchase.items.length; i++) {
         final item = updatedPurchase.items[i];
         debugPrint('[PurchaseDetailScreen] Товар $i: ${item.productName}');
@@ -100,9 +104,70 @@ class _PurchaseDetailScreenState extends State<PurchaseDetailScreen> {
         debugPrint('[PurchaseDetailScreen]   - Принято: ${item.receivedQty}');
         debugPrint('[PurchaseDetailScreen]   - Недостача: ${item.missingQty}');
         debugPrint('[PurchaseDetailScreen]   - Статус: ${item.status} (${item.statusDisplayName})');
+        
+        // Получаем информацию о продукте для проверки satushiCode
+        final product = await _firebaseService.getProductById(item.productId);
+        if (product == null) {
+          productsWithoutSatushiCode.add('${item.productName} (продукт не найден)');
+        } else if (product.satushiCode == null || product.satushiCode!.isEmpty) {
+          productsWithoutSatushiCode.add(item.productName);
+        }
       }
       
-      debugPrint('[PurchaseDetailScreen] Отправляем в API');
+      // Если есть товары без satushiCode, показываем уведомление и не допускаем оприходование
+      if (productsWithoutSatushiCode.isNotEmpty) {
+        setState(() { _stockingInProgress = false; });
+        
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.warning, color: Colors.orange),
+                SizedBox(width: 8),
+                Text('Нельзя оприходовать'),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Следующие товары не имеют Satushi код:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 12),
+                ...productsWithoutSatushiCode.map((productName) => 
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.error_outline, color: Colors.red, size: 16),
+                        const SizedBox(width: 8),
+                        Expanded(child: Text(productName)),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Добавьте Satushi код для этих товаров в каталоге, чтобы продолжить оприходование.',
+                  style: TextStyle(fontStyle: FontStyle.italic),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Понятно'),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+      
+      debugPrint('[PurchaseDetailScreen] Все товары имеют satushiCode, отправляем в API');
       
       // Вызываем API для оприходования с актуальными данными
       final success = await _satushiApiService.incomeRequest(
@@ -433,35 +498,51 @@ class _PurchaseDetailScreenState extends State<PurchaseDetailScreen> {
               itemCount: widget.purchase.items.length,
               itemBuilder: (context, i) {
                 final item = widget.purchase.items[i];
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  child: ListTile(
-                    title: Text(
-                      item.productName,
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Заказано: ${item.orderedQty} × ${item.purchasePrice.toStringAsFixed(2)} ₸ = ${item.totalPrice.toStringAsFixed(2)} ₸'),
-                        if (item.receivedQty != null)
-                          Text('Принято: ${item.receivedQty} шт.', style: const TextStyle(color: Colors.green)),
-                        if (item.missingQty != null && item.missingQty! > 0)
-                          Text('Недостача: ${item.missingQty} шт.', style: const TextStyle(color: Colors.red)),
-                      ],
-                    ),
-                    trailing: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Color(item.statusColor),
-                        borderRadius: BorderRadius.circular(12),
+                return FutureBuilder<Product?>(
+                  future: _firebaseService.getProductById(item.productId),
+                  builder: (context, snapshot) {
+                    final product = snapshot.data;
+                    final hasSatushiCode = product?.satushiCode != null && product!.satushiCode!.isNotEmpty;
+                    
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        leading: hasSatushiCode == false 
+                          ? const Icon(Icons.warning, color: Colors.orange)
+                          : const Icon(Icons.check_circle, color: Colors.green),
+                        title: Text(
+                          item.productName,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Заказано: ${item.orderedQty} × ${item.purchasePrice.toStringAsFixed(2)} ₸ = ${item.totalPrice.toStringAsFixed(2)} ₸'),
+                            if (item.receivedQty != null)
+                              Text('Принято: ${item.receivedQty} шт.', style: const TextStyle(color: Colors.green)),
+                            if (item.missingQty != null && item.missingQty! > 0)
+                              Text('Недостача: ${item.missingQty} шт.', style: const TextStyle(color: Colors.red)),
+                            if (hasSatushiCode == false)
+                              const Text(
+                                '⚠️ Нет Satushi кода',
+                                style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
+                              ),
+                          ],
+                        ),
+                        trailing: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Color(item.statusColor),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            item.statusDisplayName,
+                            style: const TextStyle(color: Colors.white, fontSize: 12),
+                          ),
+                        ),
                       ),
-                      child: Text(
-                        item.statusDisplayName,
-                        style: const TextStyle(color: Colors.white, fontSize: 12),
-                      ),
-                    ),
-                  ),
+                    );
+                  },
                 );
               },
             ),

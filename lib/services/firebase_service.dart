@@ -54,6 +54,21 @@ class FirebaseService {
     }
   }
 
+  Future<Product?> getProductById(String productId) async {
+    try {
+      final doc = await _firestore.collection('products').doc(productId).get();
+      if (doc.exists) {
+        final data = doc.data()!;
+        data['id'] = doc.id;
+        return Product.fromMap(data);
+      }
+      return null;
+    } catch (e) {
+      print('Ошибка получения продукта по ID: $e');
+      return null;
+    }
+  }
+
   // Торговые точки
   Future<List<Outlet>> getOutlets() async {
     try {
