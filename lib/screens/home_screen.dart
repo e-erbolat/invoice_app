@@ -267,35 +267,6 @@ class _HomeScreenState extends State<HomeScreen> {
         body: const Center(child: CircularProgressIndicator()),
       );
     }
-    final isAdmin = _user?.role == 'admin' || _user?.role == 'superadmin';
-    final items = [
-      if (isAdmin)
-        {'icon': Icons.inbox, 'label': 'Входящие накладные', 'route': '/admin_incoming_invoices'},
-      if (isAdmin)
-        {'icon': Icons.build, 'label': 'На сборке', 'route': '/admin_packing_invoices'},
-      if (isAdmin)
-        {'icon': Icons.local_shipping, 'label': 'На доставке', 'route': '/admin_delivery_invoices'},
-      if (isAdmin)
-        {'icon': Icons.done_all, 'label': 'Доставлен', 'route': '/admin_delivered_invoices'},
-      if (isAdmin)
-        {'icon': Icons.verified, 'label': 'Проверка оплат', 'route': '/admin_payment_check_invoices'},
-      if (isAdmin)
-        {'icon': Icons.archive, 'label': 'Архив накладных', 'route': '/invoice_list'},
-      if (isAdmin)
-        {
-          'icon': Icons.inventory_2, 
-          'label': 'Каталог товаров', 
-          'route': '/products',
-          'badge': _activeProcurementsCount > 0 ? _activeProcurementsCount.toString() : null
-        },
-      if (isAdmin)
-        {'icon': Icons.location_city, 'label': 'Отчёт по точкам', 'route': '/outlet_report'},
-      if (isAdmin)
-        {'icon': Icons.people_alt, 'label': 'Отчёт по представителям', 'route': '/sales_rep_report'},
-      if (isAdmin)
-        {'icon': Icons.file_upload, 'label': 'Импорт данных', 'route': '/import'},
-      {'icon': Icons.add_box, 'label': 'Создать накладную', 'route': '/create_invoice'},
-    ];
 
     String appBarTitle;
     if (_user?.role == 'admin' || _user?.role == 'superadmin') {
